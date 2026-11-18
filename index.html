@@ -44,10 +44,11 @@
   .tile:hover { border-color: #4a5a8f; }
   .tile input { position:absolute; opacity:0; pointer-events:none; }
   .tile.on { border-color: var(--accent); background: linear-gradient(180deg, #1d2754, #161e3e); }
-  .tile .top { display:flex; align-items:center; gap:12px; }
-  .tile .ico { width:46px; height:46px; border-radius:12px; display:grid; place-items:center; font-size:22px; background:#232d52; flex:none; }
-  .tile.vid .ico { background: #183f45; color: var(--accent2); }
-  .tile .check { margin-left:auto; width:32px; height:32px; border-radius:50%; border:2px solid var(--line); display:grid; place-items:center; font-size:18px; color:transparent; flex:none; }
+  .tile .thumb { position:relative; aspect-ratio: 16 / 9; border-radius:12px; background:#0e1426 center / cover no-repeat; overflow:hidden; }
+  .tile .thumb:not(.has)::after { content:"Vorschau …"; position:absolute; inset:0; display:grid; place-items:center; color:#4a5677; font-size:14px; }
+  .tile .ico { position:absolute; left:10px; bottom:10px; width:40px; height:40px; border-radius:12px; display:grid; place-items:center; font-size:18px; background:rgba(10,14,26,.75); z-index:1; }
+  .tile.vid .ico { color: var(--accent2); }
+  .tile .check { position:absolute; top:10px; left:10px; width:34px; height:34px; border-radius:50%; border:2px solid rgba(238,242,255,.7); background:rgba(10,14,26,.55); display:grid; place-items:center; font-size:18px; color:transparent; z-index:1; }
   .tile.on .check { background: var(--grad); border-color: transparent; color:#0a0e1a; }
   .tile .nm { font-size: 15px; color: #cdd6f4; overflow-wrap:anywhere; line-height:1.3; }
   .tile .meta { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:auto; }
@@ -59,7 +60,7 @@
   .filechip input { display:none; }
   .chip.danger { color:#ffb3ad; border-color:#5a3340; }
   .chip.danger.armed, .del.armed { background:#7a2632; color:#fff; border-color:#ff8f86; }
-  .del { position:relative; z-index:2; margin-left:8px; min-width:52px; height:44px; border-radius:12px; border:1px solid var(--line); background:#22293f; color:#ffb3ad; font-size:18px; cursor:pointer; flex:none; }
+  .del { position:absolute; top:8px; right:8px; z-index:2; min-width:52px; height:44px; border-radius:12px; border:1px solid var(--line); background:#22293f; color:#ffb3ad; font-size:18px; cursor:pointer; flex:none; }
   .progress { display:flex; align-items:center; gap:14px; color: var(--muted); font-size:16px; }
   .pbar { flex:1; height:14px; border-radius:7px; background:#26305a; overflow:hidden; }
   .pbar i { display:block; height:100%; width:0; background: var(--grad); transition: width .2s; }
@@ -137,19 +138,16 @@
       </div>
       <div id="pcfiles" class="grid"><div class="empty">Liste wird geladen…</div></div>
       <div class="head">
-        <h2>Bibliothek auf der Brille</h2>
-        <span class="help" id="libinfo"></span>
+        <h2 id="dirtitle">Auf der Brille</h2>
+        <div class="chips">
+          <button type="button" class="chip" id="dirconnect" style="display:none">📁 Ordner verbinden</button>
+          <button type="button" class="chip" id="dirall" style="display:none">Alle auswählen</button>
+          <button type="button" class="chip" id="dirrefresh" style="display:none">↻</button>
+        </div>
       </div>
-      <div class="chips">
-        <label class="chip filechip" for="libimport">＋ Importieren<input id="libimport" type="file" accept="image/*,video/*" multiple></label>
-        <button type="button" class="chip" id="libsel">Alle auswählen</button>
-        <button type="button" class="chip danger" id="libdelsel">Ausgewählte löschen</button>
-        <button type="button" class="chip" id="dirconnect" style="display:none">📁 Ordner verbinden</button>
-        <label class="chip filechip" for="file">Nur ansehen (ohne Import)<input id="file" type="file" accept="image/*,video/*" multiple></label>
-      </div>
-      <div id="libprogress" class="progress" style="display:none"><div class="pbar"><i id="libbar"></i></div><span id="libptext"></span></div>
-      <div id="library" class="grid"><div class="empty">Noch nichts importiert. „＋ Importieren“ kopiert Videos/Bilder einmal in die App – danach sind sie immer hier, auch ohne WLAN.</div></div>
-      <div id="dirbox" style="display:none"><div class="head"><h2 id="dirtitle">Ordner</h2><button type="button" class="chip" id="dirrefresh">↻</button></div><div id="dirfiles" class="grid"></div></div>
+      <div id="dirfiles" class="grid"><div class="empty" id="dirhint">Tippe auf „📁 Ordner verbinden“ und wähle den Ordner mit deinen Videos (z. B. Movies oder Download).</div></div>
+      <div id="oldlib" class="progress" style="display:none"><span id="oldlibtext"></span><button type="button" class="chip danger" id="oldlibdel">Alte Bibliothek leeren</button></div>
+      <label class="file" for="file">Einzelne Dateien öffnen (ohne Ordner)<input id="file" type="file" accept="image/*,video/*" multiple></label>
       <div id="localfiles" class="grid" style="display:none"></div>
     </main>
     <aside class="card side">
@@ -416,20 +414,21 @@
     const old = btn.textContent; btn.classList.add("armed"); btn.textContent = armedText;
     btn._t = setTimeout(() => { btn.classList.remove("armed"); btn.textContent = old; }, 4000);
   }
-  function makeTile(name, on, onToggle, t, size, onDelete) {
+  function makeTile(name, on, onToggle, t, size, onDelete, thumbSrc) {
     const c = classify(name);
     const tile = document.createElement("label"); tile.className = "tile" + (c.video ? " vid" : "") + (on ? " on" : "");
     const cb = document.createElement("input"); cb.type = "checkbox"; cb.value = name; cb.checked = on;
     cb.addEventListener("change", () => { tile.classList.toggle("on", cb.checked); onToggle(cb.checked); });
-    tile.innerHTML = `<div class="top"><div class="ico">${c.video ? "▶" : "▣"}</div><div class="check">✓</div></div><div class="nm"></div>
+    tile.innerHTML = `<div class="thumb"><div class="ico">${c.video ? "▶" : "▣"}</div><div class="check">✓</div></div><div class="nm"></div>
       <div class="meta"><span class="badge${c.video ? " v" : ""}">${c.video ? "Video" : "Bild"}</span><span class="badge">${c.label}</span><span class="date">${fmtDate(t)}${size ? " · " + fmtSize(size) : ""}</span></div>`;
     tile.querySelector(".nm").textContent = name.replace(/_0*(\d+)_?(?=\.\w+$)/, " · $1").replace(/\.\w+$/, "");
     tile.title = name; tile.prepend(cb);
     if (onDelete) {
       const del = document.createElement("button"); del.type = "button"; del.className = "del"; del.textContent = "🗑"; del.title = "Löschen";
       del.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); armDelete(del, "Löschen?", onDelete); });
-      tile.querySelector(".top").appendChild(del);
+      tile.querySelector(".thumb").appendChild(del);
     }
+    if (thumbSrc) attachThumb(tile, name, thumbSrc);
     return tile;
   }
   // Files chosen on this device (headset / phone): they stay on the device and are opened directly
@@ -438,14 +437,15 @@
   function renderLocal() {
     const box = $("localfiles"); box.textContent = "";
     box.style.display = localItems.length ? "" : "none";
-    localItems.forEach(it => box.appendChild(makeTile(it.name, it.on, (on) => { it.on = on; selectionChanged(); }, 0)));
+    localItems.forEach(it => box.appendChild(makeTile(it.name, it.on, (on) => { it.on = on; selectionChanged(); }, 0, it.size, null,
+      it.file ? { key: `local:${it.name}:${it.size}:${it.file.lastModified}`, file: async () => it.file } : null)));
     selectionChanged();
   }
   $("file").addEventListener("change", (e) => {
     const fs = [...(e.target.files || [])];
     if (!fs.length) return;
     localItems.forEach(it => { if (it.own) URL.revokeObjectURL(it.url); });
-    localItems = fs.sort((x, y) => x.name.localeCompare(y.name)).map(f => ({ url: URL.createObjectURL(f), name: f.name,
+    localItems = fs.sort((x, y) => x.name.localeCompare(y.name)).map(f => ({ url: URL.createObjectURL(f), name: f.name, file: f, size: f.size,
       video: f.type.startsWith("video/") || VID.test(f.name), on: true, own: true }));
     e.target.value = "";                                       // the same files can be chosen again
     renderLocal();
@@ -456,118 +456,89 @@
     renderLocal();
   });
 
-  // ---------- library: copies kept in the app's own private storage on this device ----------
-  let libItems = [], libDir = null;
-  let libSel = new Set(); try { libSel = new Set(JSON.parse(localStorage.getItem("vrv_libsel") || "[]")); } catch (e) {}
-  const saveLibSel = () => { try { localStorage.setItem("vrv_libsel", JSON.stringify([...libSel])); } catch (e) {} };
-  const libChecked = () => libItems.filter(it => libSel.has(it.name));
-  async function getLibDir() {
-    if (libDir) return libDir;
-    if (!navigator.storage || !navigator.storage.getDirectory) throw new Error("Dieser Browser hat keinen App-Speicher.");
-    libDir = await (await navigator.storage.getDirectory()).getDirectoryHandle("library", { create: true });
-    return libDir;
-  }
-  async function libInfo() {
-    try {
-      const est = navigator.storage.estimate ? await navigator.storage.estimate() : null;
-      const used = libItems.reduce((a, it) => a + it.size, 0);
-      $("libinfo").textContent = `${libItems.length} ${libItems.length === 1 ? "Datei" : "Dateien"} · ${fmtSize(used) || "0 MB"}` +
-        (est && est.quota ? ` · noch ca. ${fmtSize(Math.max(0, est.quota - est.usage))} frei` : "");
-    } catch (e) {}
-  }
-  async function loadLibrary() {
-    const box = $("library");
-    try {
-      const dir = await getLibDir(), list = [];
-      for await (const [name, h] of dir.entries()) {
-        if (h.kind !== "file" || !(IMG.test(name) || VID.test(name))) continue;
-        const f = await h.getFile();
-        list.push({ name, size: f.size, t: Math.round(f.lastModified / 1000), handle: h });
-      }
-      libItems = list.sort((a, b) => b.t - a.t);
-      const names = new Set(libItems.map(it => it.name)); libSel = new Set([...libSel].filter(n => names.has(n))); saveLibSel();
-    } catch (e) { libItems = []; box.innerHTML = `<div class="empty">${e.message}</div>`; return; }
-    renderLibrary(); libInfo();
-  }
-  function renderLibrary() {
-    const box = $("library");
-    if (!libItems.length) { box.innerHTML = '<div class="empty">Noch nichts importiert. „＋ Importieren“ kopiert Videos/Bilder einmal in die App – danach sind sie immer hier, auch ohne WLAN.</div>'; selectionChanged(); return; }
-    box.textContent = "";
-    libItems.forEach(it => box.appendChild(makeTile(it.name, libSel.has(it.name),
-      (on) => { on ? libSel.add(it.name) : libSel.delete(it.name); saveLibSel(); selectionChanged(); }, it.t, it.size,
-      () => deleteFromLibrary([it.name]))));
-    selectionChanged();
-  }
-  async function deleteFromLibrary(names) {
-    const dir = await getLibDir();
-    for (const n of names) { try { await dir.removeEntry(n); } catch (e) {} libSel.delete(n); }
-    saveLibSel(); await loadLibrary();
-    setStatus(`${names.length} ${names.length === 1 ? "Datei" : "Dateien"} gelöscht.`, "ok");
-  }
-  async function copyInto(dir, file, name, onBytes) {           // stream the file into the app storage
-    const h = await dir.getFileHandle(name, { create: true });
-    if (h.createWritable) {
-      const w = await h.createWritable();
-      let done = 0;
-      const counter = new TransformStream({ transform(chunk, ctl) { done += chunk.byteLength; onBytes(done); ctl.enqueue(chunk); } });
-      await file.stream().pipeThrough(counter).pipeTo(w);
-      return;
-    }
-    // older browsers: write in a helper thread with a synchronous handle
-    const code = `onmessage = async (e) => { const { file, name } = e.data; const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle("library");
-      const h = await dir.getFileHandle(name); const a = await h.createSyncAccessHandle(); a.truncate(0); let pos = 0; const r = file.stream().getReader();
-      for (;;) { const { done, value } = await r.read(); if (done) break; a.write(value, { at: pos }); pos += value.byteLength; postMessage({ pos }); }
-      a.flush(); a.close(); postMessage({ end: true }); };`;
-    const wk = new Worker(URL.createObjectURL(new Blob([code], { type: "text/javascript" })));
-    await new Promise((res, rej) => { wk.onmessage = (e) => { if (e.data.end) { wk.terminate(); res(); } else onBytes(e.data.pos); }; wk.onerror = (e) => { wk.terminate(); rej(new Error("Schreiben fehlgeschlagen")); }; wk.postMessage({ file, name }); });
-  }
-  let importing = false;
-  async function importFiles(files) {
-    if (!files.length) return;
-    if (importing) { setStatus("Ein Import läuft noch – bitte kurz warten.", "err"); return; }
-    importing = true;
-    try { await importFilesNow(files); } finally { importing = false; }
-  }
-  async function importFilesNow(files) {
-    let dir; try { dir = await getLibDir(); } catch (e) { setStatus(e.message, "err"); return; }
-    try {                                                       // ask the browser not to clear it on its own (never wait long for an answer)
-      if (navigator.storage.persist) await Promise.race([navigator.storage.persist(), new Promise(r => setTimeout(r, 1500))]);
-    } catch (e) {}
-    const total = files.reduce((a, f) => a + f.size, 0);
-    try {
-      const est = navigator.storage.estimate ? await navigator.storage.estimate() : null;
-      if (est && est.quota && est.quota - est.usage < total * 1.05) { setStatus(`Nicht genug Speicher: ${fmtSize(total)} nötig, ${fmtSize(est.quota - est.usage)} frei.`, "err"); return; }
-    } catch (e) {}
-    const existing = new Map(libItems.map(it => [it.name, it.size]));
-    $("libprogress").style.display = ""; let base = 0, added = 0, skipped = 0;
-    for (const [k, f] of files.entries()) {
-      let name = f.name.replace(/[\\/:*?"<>|]/g, "_");
-      if (existing.get(name) === f.size) { skipped++; base += f.size; continue; }   // same file already imported
-      for (let i = 2; existing.has(name); i++) name = f.name.replace(/(\.\w+)?$/, ` (${i})$1`);
-      const show = (b) => { const p = Math.min(1, (base + b) / total); $("libbar").style.width = (p * 100).toFixed(1) + "%";
-        $("libptext").textContent = `Importiere ${k + 1}/${files.length} · ${Math.round(p * 100)} %`; };
-      try { await copyInto(dir, f, name, show); added++; existing.set(name, f.size); libSel.add(name); }
-      catch (e) { try { await dir.removeEntry(name); } catch (e2) {} setStatus(`${f.name}: Import fehlgeschlagen (${e.message || e}).`, "err"); }
-      base += f.size; show(0);
-    }
-    saveLibSel();
-    $("libprogress").style.display = "none";
-    await loadLibrary();
-    setStatus(`${added} importiert${skipped ? `, ${skipped} schon vorhanden` : ""}. Die Originale kannst du jetzt in der Dateien-App der Brille löschen, um Platz zu sparen.`, "ok");
-  }
-  $("libimport").addEventListener("change", (e) => { const fs = [...(e.target.files || [])]; e.target.value = ""; importFiles(fs); });
-  $("libsel").addEventListener("click", () => { libItems.forEach(it => libSel.add(it.name)); saveLibSel(); renderLibrary(); });
-  $("libdelsel").addEventListener("click", (e) => {
-    const names = libChecked().map(it => it.name);
-    if (!names.length) { setStatus("In der Bibliothek ist nichts ausgewählt.", "err"); return; }
-    armDelete(e.currentTarget, `${names.length} wirklich löschen?`, () => deleteFromLibrary(names));
-  });
+  // ---------- copies from the former import library (app storage): show what is left + one button to clear ----------
   const libUrls = [];
-  const libItemFor = (it) => ({ name: it.name, video: VID.test(it.name), lib: true,
-    getUrl: async () => { const u = URL.createObjectURL(await it.handle.getFile()); libUrls.push(u); return u; } });
+  async function checkOldLibrary() {
+    try {
+      if (!navigator.storage || !navigator.storage.getDirectory) return;
+      const root = await navigator.storage.getDirectory(); let dir;
+      try { dir = await root.getDirectoryHandle("library"); } catch (e) { return; }
+      let n = 0, size = 0;
+      for await (const [, h] of dir.entries()) if (h.kind === "file") { n++; size += (await h.getFile()).size; }
+      if (!n) { try { await root.removeEntry("library", { recursive: true }); } catch (e) {} return; }
+      $("oldlib").style.display = "";
+      $("oldlibtext").textContent = `Alte Import-Bibliothek: ${n} ${n === 1 ? "Datei" : "Dateien"} · ${fmtSize(size)} belegt – wird nicht mehr gebraucht.`;
+      $("oldlibdel").onclick = (e) => armDelete(e.currentTarget, "Wirklich leeren?", async () => {
+        try { await root.removeEntry("library", { recursive: true }); $("oldlib").style.display = "none"; setStatus("Alte Bibliothek geleert.", "ok"); }
+        catch (err) { setStatus("Leeren fehlgeschlagen: " + err.message, "err"); }
+      });
+    } catch (e) {}
+  }
+
+  // ---------- preview pictures: made once per file (in the background, one at a time), then kept on this device ----------
+  const thumbQueue = []; let thumbBusy = false;
+  const waitEv = (el, ev, ms) => new Promise((res, rej) => { const t = setTimeout(() => rej(new Error("timeout")), ms);
+    el.addEventListener(ev, () => { clearTimeout(t); res(); }, { once: true }); el.addEventListener("error", () => { clearTimeout(t); rej(new Error("error")); }, { once: true }); });
+  const thumbIO = "IntersectionObserver" in window
+    ? new IntersectionObserver((es) => es.forEach(e => { if (e.isIntersecting) { thumbIO.unobserve(e.target); queueThumb(e.target); } }), { rootMargin: "300px" }) : null;
+  function attachThumb(tile, name, src) { tile._thumb = { name, src }; if (thumbIO) thumbIO.observe(tile); else queueThumb(tile); }
+  function setThumb(tile, data) { const t = tile.querySelector(".thumb"); if (t) { t.style.backgroundImage = `url("${data}")`; t.classList.add("has"); } }
+  async function queueThumb(tile) {
+    const { src } = tile._thumb;
+    let cached = null; try { cached = await idb("readonly", (st) => st.get("thumb:" + src.key)); } catch (e) {}
+    if (cached) { setThumb(tile, cached); return; }
+    thumbQueue.push(tile); runThumbs();
+  }
+  async function runThumbs() {
+    if (thumbBusy) return; thumbBusy = true;
+    while (thumbQueue.length) {
+      const tile = thumbQueue.shift(); if (!tile.isConnected) continue;
+      const { name, src } = tile._thumb;
+      try {
+        const data = await makeThumb(name, src);
+        if (data) { setThumb(tile, data); idb("readwrite", (st) => st.put(data, "thumb:" + src.key)).catch(() => {}); }
+      } catch (e) { const t = tile.querySelector(".thumb"); if (t) t.classList.add("has"); }   // no preview possible: just the icon
+    }
+    thumbBusy = false;
+  }
+  async function makeThumb(name, src) {
+    let url = src.url, own = false;
+    if (!url) { url = URL.createObjectURL(await src.file()); own = true; }
+    try {
+      if (VID.test(name)) {
+        const v = document.createElement("video"); v.muted = true; v.playsInline = true; v.preload = "auto"; v.src = url;
+        try {
+          await waitEv(v, "loadedmetadata", 15000);
+          v.currentTime = Math.min(Math.max(0.5, (v.duration || 4) * 0.15), 5);   // a frame shortly after the start
+          await waitEv(v, "seeked", 15000);
+          return drawThumb(v, v.videoWidth, v.videoHeight, name);
+        } finally { v.removeAttribute("src"); v.load(); }
+      }
+      const blob = src.url ? await (await fetch(url)).blob() : await src.file();
+      let bmp; try { bmp = await createImageBitmap(blob, { resizeWidth: 1600, resizeQuality: "medium" }); } catch (e) { bmp = await createImageBitmap(blob); }
+      try { return drawThumb(bmp, bmp.width, bmp.height, name); } finally { bmp.close && bmp.close(); }
+    } finally { if (own) URL.revokeObjectURL(url); }
+  }
+  function drawThumb(el, w, h, name) {                          // one eye, the part you see straight ahead, as 16:9
+    const fmt = fileFormats[name] || detectFormat(w, h, name), TW = 384, TH = 216;
+    let [sx, sy, sw, sh] = isTB(fmt) ? [0, 0, w, h / 2] : isSbs(fmt) ? [0, 0, w / 2, h] : [0, 0, w, h];
+    const sub = (fx, fy) => { sx += sw * (1 - fx) / 2; sy += sh * (1 - fy) / 2; sw *= fx; sh *= fy; };
+    let da;
+    if (fmt.startsWith("360")) { sub(1 / 3, 0.6); da = sw / sh; }            // ~120° straight ahead
+    else if (fmt.startsWith("180")) { sub(0.6, 0.6); da = sw / sh; }
+    else if (isFisheye(fmt)) { sub(0.55, 0.55); da = sw / sh; }
+    else da = eyeAspectFor(fmt, w, h);                                         // flat / wide: as it looks (Half-SBS stretched back)
+    const target = TW / TH;
+    if (da > target) { const k = target / da; sx += sw * (1 - k) / 2; sw *= k; } else { const k = da / target; sy += sh * (1 - k) / 2; sh *= k; }
+    const c = document.createElement("canvas"); c.width = TW; c.height = TH;
+    c.getContext("2d").drawImage(el, sx, sy, sw, sh, 0, 0, TW, TH);
+    return c.toDataURL("image/jpeg", 0.8);
+  }
 
   // ---------- folder access (only if the browser allows it, e.g. Chrome on a PC) ----------
-  let dirHandle = null, dirItems = [], dirSel = new Set();
+  let dirHandle = null, dirItems = [];
+  let dirSel = new Set(); try { dirSel = new Set(JSON.parse(localStorage.getItem("vrv_dirsel") || "[]")); } catch (e) {}
+  const saveDirSel = () => { try { localStorage.setItem("vrv_dirsel", JSON.stringify([...dirSel])); } catch (e) {} };
   const canDir = "showDirectoryPicker" in window;
   const idb = (mode, fn) => new Promise((res, rej) => { const r = indexedDB.open("vrviewer", 1); r.onupgradeneeded = () => r.result.createObjectStore("kv");
     r.onsuccess = () => { const tx = r.result.transaction("kv", mode); const q = fn(tx.objectStore("kv")); tx.oncomplete = () => res(q && q.result); tx.onerror = () => rej(tx.error); }; r.onerror = () => rej(r.error); });
@@ -576,11 +547,13 @@
     for await (const [name, h] of dirHandle.entries())
       if (h.kind === "file" && (IMG.test(name) || VID.test(name))) { const f = await h.getFile(); dirItems.push({ name, size: f.size, t: Math.round(f.lastModified / 1000), handle: h }); }
     dirItems.sort((a, b) => b.t - a.t);
-    $("dirbox").style.display = ""; $("dirtitle").textContent = "Ordner: " + dirHandle.name;
+    const names = new Set(dirItems.map(it => it.name)); dirSel = new Set([...dirSel].filter(n => names.has(n))); saveDirSel();
+    $("dirtitle").textContent = "Auf der Brille: " + dirHandle.name; $("dirall").style.display = ""; $("dirrefresh").style.display = "";
     const box = $("dirfiles"); box.textContent = "";
     if (!dirItems.length) box.innerHTML = '<div class="empty">Keine Videos/Bilder in diesem Ordner.</div>';
-    dirItems.forEach(it => box.appendChild(makeTile(it.name, dirSel.has(it.name), (on) => { on ? dirSel.add(it.name) : dirSel.delete(it.name); selectionChanged(); },
-      it.t, it.size, async () => { try { await dirHandle.removeEntry(it.name); dirSel.delete(it.name); await listDir(); setStatus("Gelöscht: " + it.name, "ok"); } catch (e) { setStatus("Löschen nicht erlaubt: " + e.message, "err"); } })));
+    dirItems.forEach(it => box.appendChild(makeTile(it.name, dirSel.has(it.name), (on) => { on ? dirSel.add(it.name) : dirSel.delete(it.name); saveDirSel(); selectionChanged(); },
+      it.t, it.size, async () => { try { await dirHandle.removeEntry(it.name); dirSel.delete(it.name); saveDirSel(); await listDir(); setStatus("Gelöscht: " + it.name, "ok"); } catch (e) { setStatus("Löschen nicht erlaubt: " + e.message, "err"); } },
+      { key: `dir:${it.name}:${it.size}:${it.t}`, file: () => it.handle.getFile() })));
     selectionChanged();
   }
   async function useDir(h, ask) {
@@ -588,8 +561,9 @@
     if (p !== "granted" && ask) p = await h.requestPermission({ mode: "readwrite" });
     dirHandle = h;
     if (p === "granted") { $("dirconnect").textContent = "📁 Anderen Ordner"; await listDir(); }
-    else { $("dirconnect").textContent = "📁 Ordnerzugriff erneuern"; }
+    else { $("dirconnect").textContent = "📁 Ordnerzugriff erneuern"; $("dirfiles").innerHTML = '<div class="empty">Tippe auf „📁 Ordnerzugriff erneuern“, um deine Dateien wieder zu sehen.</div>'; }
   }
+  if (!canDir) $("dirhint").textContent = "Dieser Browser erlaubt keinen Ordnerzugriff – nutze „Einzelne Dateien öffnen“.";
   if (canDir) {
     $("dirconnect").style.display = "";
     $("dirconnect").addEventListener("click", async () => {
@@ -600,6 +574,7 @@
       } catch (e) { if (e.name !== "AbortError") setStatus("Ordner: " + e.message, "err"); }
     });
     $("dirrefresh").addEventListener("click", () => dirHandle && listDir());
+    $("dirall").addEventListener("click", () => { dirItems.forEach(it => dirSel.add(it.name)); saveDirSel(); listDir(); });
     idb("readonly", (st) => st.get("dir")).then(h => h && useDir(h, false)).catch(() => {});
   }
   const dirChecked = () => dirItems.filter(it => dirSel.has(it.name)).map(it => ({ name: it.name, video: VID.test(it.name), dir: true, handle: it.handle,
@@ -630,18 +605,19 @@
     const box = $("pcfiles"); box.textContent = "";
     const list = visiblePC();
     if (!list.length) { box.innerHTML = `<div class="empty">${pcFiles.length ? "Keine Dateien für diesen Filter." : "Noch keine Bilder oder Videos gefunden."}</div>`; }
-    list.forEach(f => box.appendChild(makeTile(f.n, pcSel.has(f.n), (on) => { on ? pcSel.add(f.n) : pcSel.delete(f.n); selectionChanged(); }, f.t)));
+    list.forEach(f => box.appendChild(makeTile(f.n, pcSel.has(f.n), (on) => { on ? pcSel.add(f.n) : pcSel.delete(f.n); selectionChanged(); }, f.t, f.s, null,
+      { key: `pc:${f.n}:${f.s || 0}:${f.t || 0}`, url: "files/" + encodeURIComponent(f.n) })));
     selectionChanged();
   }
   function selectionChanged() {
     try { localStorage.setItem("vrv_sel", JSON.stringify([...pcSel])); } catch (e) {}
-    const n = [...checkedNames(), ...libChecked().map(it => it.name), ...dirItems.filter(it => dirSel.has(it.name)).map(it => it.name), ...localChecked().map(it => it.name)], vids = n.filter(x => VID.test(x)).length;
+    const n = [...checkedNames(), ...dirItems.filter(it => dirSel.has(it.name)).map(it => it.name), ...localChecked().map(it => it.name)], vids = n.filter(x => VID.test(x)).length;
     $("selcount").textContent = n.length ? `${n.length} ausgewählt` : "Nichts ausgewählt";
     $("selinfo").textContent = n.length ? `${n.length - vids} ${n.length - vids === 1 ? "Bild" : "Bilder"} · ${vids} ${vids === 1 ? "Video" : "Videos"} · laufen in Schleife` : "Kacheln antippen zum Auswählen";
     updateStart();
   }
   function updateStart() {
-    const none = !(checkedNames().length || localChecked().length || libSel.size || dirSel.size);
+    const none = !(checkedNames().length || localChecked().length || dirItems.some(it => dirSel.has(it.name)));
     startBtn.disabled = none; $("startxr").disabled = none;
   }
   function pcOnline(on) {                                      // without PC: hide its filters (only "Neu laden" stays)
@@ -666,7 +642,7 @@
       pcFiles = files; pcOnline(true);
       const names = new Set(files.map(f => f.n)); pcSel = new Set([...pcSel].filter(n => names.has(n)));
       renderPC();
-    } catch (e) { pcFiles = []; pcOnline(false); box.innerHTML = '<div class="empty">PC nicht erreichbar – deine Bibliothek auf der Brille ist unten.</div>'; updateStart(); }
+    } catch (e) { pcFiles = []; pcOnline(false); box.innerHTML = '<div class="empty">PC nicht erreichbar – deine Dateien auf der Brille sind unten.</div>'; updateStart(); }
   }
   const chipGroup = (id, attr, onPick) => $(id).querySelectorAll(`[${attr}]`).forEach(b => b.addEventListener("click", () => onPick(b)));
   chipGroup("filters", "data-filter", (b) => {
@@ -683,10 +659,10 @@
     return sync;
   }
   $("selall").addEventListener("click", () => { visiblePC().forEach(f => pcSel.add(f.n)); renderPC(); });
-  $("selnone").addEventListener("click", () => { pcSel.clear(); libSel.clear(); saveLibSel(); dirSel.clear(); localItems.forEach(it => it.on = false); renderPC(); renderLibrary(); renderLocal(); if (dirHandle) listDir(); });
+  $("selnone").addEventListener("click", () => { pcSel.clear(); dirSel.clear(); saveDirSel(); localItems.forEach(it => it.on = false); renderPC(); renderLocal(); if (dirHandle) listDir(); });
   $("refresh").addEventListener("click", loadList);
   loadList();
-  loadLibrary();
+  checkOldLibrary();
   $("format").addEventListener("change", describe);
   // Settings: remembered on this phone
   try { const v = localStorage.getItem("vrv_sound"); if (v !== null) $("sound").checked = v === "1"; } catch (e) {}
@@ -1006,7 +982,7 @@
 
   function playlistItems() {
     const ticked = checkedNames().map(n => ({ url: "files/" + encodeURIComponent(n), name: n, video: VID.test(n) }));
-    const items = [...ticked, ...libChecked().map(libItemFor), ...dirChecked(), ...localChecked()];
+    const items = [...ticked, ...dirChecked(), ...localChecked()];
     if (!items.length) { setStatus("Wähle zuerst mindestens eine Datei aus.", "err"); return null; }
     return items;
   }
@@ -1242,7 +1218,7 @@
                    { t: snd ? "Ton an" : "Ton aus", a: "sound", on: snd }, { t: "Augen", s: sw ? "getauscht" : "normal", a: "swap", on: sw }]),
       ...row(740, [{ t: "◀", s: "Format", a: "fmt-" }, { t: LABEL[curFmt()] || "", s: fileFormats[fileName] || $("format").value !== "auto" ? "gewählt · tippen = auto" : "automatisch erkannt", a: "fmt0", wide: true },
                    null, { t: "▶", s: "Format", a: "fmt+" },
-                   { t: delArmed ? "Wirklich?" : "Löschen", s: delArmed ? "nochmal tippen" : (canDel() ? "von der Brille" : "nur Bibliothek"), a: "del", off: !canDel(), danger: true }]),
+                   { t: delArmed ? "Wirklich?" : "Löschen", s: delArmed ? "nochmal tippen" : (canDel() ? "von der Brille" : "nur Ordner-Dateien"), a: "del", off: !canDel(), danger: true }]),
       ...row(570, [{ t: "BT −10", a: "bt-" }, { t: d + " ms", s: "Bluetooth", a: "bt0" }, { t: "BT +10", a: "bt+" },
                    { t: "Schließen", a: "close" }, { t: "VR beenden", a: "exit", danger: true }]),
     ].filter(Boolean);
@@ -1250,15 +1226,14 @@
   function rr(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
   const FORMATS = ["180sbs", "180tb", "180mono", "fe180", "fe190", "fe200", "fe220", "360tb", "360sbs", "360mono", "rectsbs", "rect", "flathsbs", "flatsbs", "flathtb", "flattb", "flatmono"];
   let delArmed = false, delTimer = null;
-  const canDel = () => !!(current && current.item && (current.item.lib || current.item.dir));
+  const canDel = () => !!(current && current.item && current.item.dir);
   async function deleteCurrent() {
     const it = current && current.item; if (!it) return;
     try {
-      if (it.lib) { const dir = await getLibDir(); await dir.removeEntry(it.name); libSel.delete(it.name); saveLibSel(); }
-      else if (it.dir) { await dirHandle.removeEntry(it.name); dirSel.delete(it.name); }
+      if (it.dir) { await dirHandle.removeEntry(it.name); dirSel.delete(it.name); saveDirSel(); }
     } catch (e) { return; }
     it.deleted = true; jump(1);                                // next item; the deleted one is skipped from now on
-    loadLibrary(); if (dirHandle) listDir();
+    if (dirHandle) listDir();
   }
   function setFileFormat(dir) {                                // ◀ ▶ in the menu: this file only, remembered
     if (!media) return;
