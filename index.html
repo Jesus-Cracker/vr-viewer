@@ -198,7 +198,8 @@
         <div class="lbl"><span>In der Brille</span></div>
         <p class="help"><b>Menü</b>: auf den kleinen ☰-Knopf unten zeigen + Trigger/Pinch, oder <kbd>Stick drücken</kbd>.<br>
           <kbd>Stick ◀ ▶</kbd> vorheriges/nächstes · <kbd>Stick ▲ ▼</kbd> Größe · <kbd>Trigger</kbd>/Pinch Pause ·
-          <kbd>A/X</kbd> −10 s · <kbd>B/Y</kbd> +10 s · Meta-Taste halten: neu zentrieren.</p>
+          <kbd>A/X</kbd> −10 s · <kbd>B/Y</kbd> +10 s · Meta-Taste halten: neu zentrieren.<br>
+          <b>Menü verschieben</b>: aufs Menü zeigen, <kbd>Griff</kbd> halten und bewegen (Stick ▲▼ = weiter/näher) – oder die Titelzeile mit Trigger/Pinch ziehen.</p>
       </div>
       <div id="status"></div>
       <details id="phonebox">
@@ -1179,6 +1180,10 @@
       const ax = gp.axes.length >= 4 ? gp.axes[2] : 0, ay = gp.axes.length >= 4 ? gp.axes[3] : 0;
       const dir = ax > 0.7 ? 1 : ax < -0.7 ? -1 : 0;          // thumbstick left/right: previous/next item
       const grip = !!(gp.buttons[1] && gp.buttons[1].pressed);
+      if (grab) {                                              // moving the menu: stick up = further away, down = closer
+        if (Math.abs(ay) > 0.2) grab.dist = Math.min(4, Math.max(0.35, grab.dist - ay * dt * 1.2));
+        st.dir = Math.abs(ax) > 0.3 ? 1 : 0; continue;
+      }
       if (dir && !st.dir) {
         if (grip) {                                            // grip held: Bluetooth delay -/+ 20 ms
           const el = $("aoff"); el.value = Math.max(0, Math.min(500, Number(el.value) + dir * 20));
@@ -1218,7 +1223,7 @@
                    { t: snd ? "Ton an" : "Ton aus", a: "sound", on: snd }, { t: "Augen", s: sw ? "getauscht" : "normal", a: "swap", on: sw }]),
       ...row(740, [{ t: "◀", s: "Format", a: "fmt-" }, { t: LABEL[curFmt()] || "", s: fileFormats[fileName] || $("format").value !== "auto" ? "gewählt · tippen = auto" : "automatisch erkannt", a: "fmt0", wide: true },
                    null, { t: "▶", s: "Format", a: "fmt+" },
-                   { t: delArmed ? "Wirklich?" : "Löschen", s: delArmed ? "nochmal tippen" : (canDel() ? "von der Brille" : "nur Ordner-Dateien"), a: "del", off: !canDel(), danger: true }]),
+                   { t: delArmed ? "Wirklich?" : "Löschen", s: delArmed ? "nochmal tippen" : (canDel() ? "von der Brille" : "nur Ordner"), a: "del", off: !canDel(), danger: true }]),
       ...row(570, [{ t: "BT −10", a: "bt-" }, { t: d + " ms", s: "Bluetooth", a: "bt0" }, { t: "BT +10", a: "bt+" },
                    { t: "Schließen", a: "close" }, { t: "VR beenden", a: "exit", danger: true }]),
     ].filter(Boolean);
@@ -1245,7 +1250,9 @@
   }
   function drawMenu() {
     const ctx = menuCtx; ctx.clearRect(0, 0, CW, CH);
-    rr(ctx, 4, 4, CW - 8, CH - 8, 48); ctx.fillStyle = C.bg; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = C.line; ctx.stroke();
+    rr(ctx, 4, 4, CW - 8, CH - 8, 48); ctx.fillStyle = C.bg; ctx.fill(); ctx.lineWidth = grab ? 10 : 4; ctx.strokeStyle = grab ? C.accent2 : C.line; ctx.stroke();
+    const titleHot = hover.some(h => h && h.menu && h.title);
+    rr(ctx, CW / 2 - 90, 16, 180, 14, 7); ctx.fillStyle = grab || titleHot ? C.accent2 : "#3a4670"; ctx.fill();   // handle: pull here to move
     const name = current ? current.name.replace(/_0*(\d+)_?(?=\.\w+$)/, " · $1").replace(/\.\w+$/, "") : "";
     ctx.fillStyle = C.fg; ctx.font = "700 56px Inter, Roboto, sans-serif"; ctx.textBaseline = "middle";
     let nm = name; while (ctx.measureText(nm).width > 1150 && nm.length > 4) nm = nm.slice(0, -2);
@@ -1254,6 +1261,8 @@
     ctx.font = "500 40px Inter, Roboto, sans-serif"; ctx.fillStyle = C.muted;
     let info = current ? (current.video ? `${fmtT(current.media.currentTime)} / ${fmtT(vidEnd(current))}` + (current.media.paused ? " · pausiert" : "") : "Bild · 5 s") : "lädt…";
     ctx.fillText(info, 50, 165);
+    if (grab) { ctx.textAlign = "right"; ctx.fillStyle = C.accent2; ctx.font = "600 34px Inter, Roboto, sans-serif";
+      ctx.fillText("verschieben · Stick ▲▼ = weiter/näher", CW - 50, 210); ctx.textAlign = "left"; }
     if (current && current.video) {                            // progress line (display only)
       const f = Math.min(1, current.media.currentTime / (vidEnd(current) || 1));
       rr(ctx, 600, 152, 950, 26, 13); ctx.fillStyle = "#26305a"; ctx.fill();
@@ -1289,11 +1298,25 @@
   function placeInFront(obj, dist, dy) {
     const { pos, yaw } = headPose();
     obj.position.set(pos.x - Math.sin(yaw) * dist, pos.y + dy, pos.z - Math.cos(yaw) * dist);
-    obj.rotation.set(0, yaw, 0);
+    obj.lookAt(pos);                                           // turned towards your eyes (slightly tilted up)
+  }
+  // moving the menu: point at it and hold the grip (side button), or pull its title bar with trigger / pinch
+  let grab = null, menuMoved = false;                          // grab = { i, via, dist, delta }
+  function startGrab(i, via) {
+    const h = hover[i];
+    if (!menuOpen || !h || !h.menu || grab) return;
+    grab = { i, via, dist: h.distance, delta: menuMesh.position.clone().sub(h.point) };
+    menuDirty = true;
+  }
+  function endGrab(i) { if (grab && grab.i === i) { grab = null; menuMoved = true; menuDirty = true; } }
+  function inSight(obj) {                                      // is the menu within ~50° of where you look?
+    const { pos, yaw } = headPose(); const d = obj.position.clone().sub(pos).normalize();
+    return d.dot(new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw))) > Math.cos(50 * Math.PI / 180);
   }
   function toggleMenu(open) {
     menuOpen = open === undefined ? !menuOpen : open;
-    if (menuOpen) { placeInFront(menuMesh, 1.1, -0.18); menuDirty = true; }
+    if (!menuOpen && grab) grab = null;
+    if (menuOpen) { if (!menuMoved || !inSight(menuMesh)) { placeInFront(menuMesh, 1.1, -0.18); menuMoved = false; } menuDirty = true; }
     menuMesh.visible = menuOpen; toggleMesh.visible = !menuOpen;
     controllers.forEach(c => { if (c.userData.ray) c.userData.ray.scale.z = menuOpen ? 3 : 0.35; });
   }
@@ -1341,6 +1364,10 @@
       const ray = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]),
                                  new THREE.LineBasicMaterial({ color: 0x8ea2ff, transparent: true, opacity: 0.7, depthTest: false }));
       ray.renderOrder = 11; ray.scale.z = 0.35; c.add(ray); c.userData.ray = ray; c.userData.i = i;
+      c.addEventListener("squeezestart", () => startGrab(i, "squeeze"));
+      c.addEventListener("squeezeend", () => endGrab(i));
+      c.addEventListener("selectstart", () => { const h = hover[i]; if (h && h.menu && h.title) startGrab(i, "select"); });
+      c.addEventListener("selectend", () => { if (grab && grab.via === "select") endGrab(i); });
       c.addEventListener("select", () => {                    // trigger or pinch
         const h = hover[i];
         if (h && h.toggle) toggleMenu(true);
@@ -1360,6 +1387,12 @@
   function updateXRUI(t) {
     if (!menuMesh) return;
     xrScene.updateMatrixWorld();                               // current positions of menu, ☰ and controllers for the ray test
+    if (grab && controllers[grab.i]) {
+      const c = controllers[grab.i]; tmpM.identity().extractRotation(c.matrixWorld);
+      const o = new THREE.Vector3().setFromMatrixPosition(c.matrixWorld), d = new THREE.Vector3(0, 0, -1).applyMatrix4(tmpM);
+      menuMesh.position.copy(o).addScaledVector(d, grab.dist).add(grab.delta);
+      menuMesh.lookAt(headPose().pos); menuMesh.updateMatrixWorld();
+    }
     const targets = menuOpen ? [menuMesh] : [toggleMesh];
     let toggleHot = false;
     controllers.forEach((c, i) => {
@@ -1373,11 +1406,11 @@
         else if (hit && hit.uv) {
           const px = hit.uv.x * CW, py = (1 - hit.uv.y) * CH;
           const btn = menuButtons().find(b => px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + b.h);
-          h = { btn: btn || null };
+          h = { btn: btn || null, menu: true, title: py < 215, point: hit.point.clone(), distance: hit.distance };
         }
         if (c.userData.ray) c.userData.ray.scale.z = hit ? hit.distance : (menuOpen ? 3 : 0.35);
       }
-      const key = (x) => x ? (x.toggle ? "T" : x.btn ? x.btn.a : "-") : "";
+      const key = (x) => x ? (x.toggle ? "T" : x.btn ? x.btn.a : x.title ? "title" : "-") : "";
       if (key(h) !== key(hover[i])) menuDirty = true;
       hover[i] = h;
     });
