@@ -1,5 +1,5 @@
 // VR Viewer offline support: keeps the viewer itself (not your videos) so it opens without the PC / internet.
-const CACHE = "vr-viewer-v5";
+const CACHE = "vr-viewer-v6";
 const ASSETS = ["./", "index.html", "three.min.js", "manifest.webmanifest", "icon-192.png", "icon-512.png", "test_360_TB.png"];
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)));
