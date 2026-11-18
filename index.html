@@ -1,0 +1,1269 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="VR Viewer">
+<meta name="theme-color" content="#101418">
+<title>VR Viewer</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root {
+    --bg:#0a0e1a; --bg2:#10162a; --card:#151c33; --card2:#1b2442; --line:#2a3558; --fg:#eef2ff; --muted:#9ba7c9;
+    --accent:#8ea2ff; --accent2:#4fd8c6; --sel:#2c3a72; --ok:#6fe3a5; --err:#ff8f86;
+    --grad: linear-gradient(135deg, #8ea2ff 0%, #4fd8c6 100%);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin:0; min-height:100%; background: radial-gradient(1200px 700px at 15% -10%, #1b2550 0%, transparent 60%), radial-gradient(900px 600px at 110% 10%, #123a43 0%, transparent 55%), var(--bg);
+    color:var(--fg); font: 19px/1.45 "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  button, input, select { font: inherit; }
+  #setup { max-width: 1440px; margin: 0 auto; padding: 28px 28px 140px; display:flex; flex-direction:column; gap:22px; }
+  header { display:flex; align-items:center; gap:18px; }
+  header .logo { width:58px; height:58px; border-radius:16px; background: var(--grad); display:grid; place-items:center; font-size:30px; color:#0a0e1a; flex:none; }
+  h1 { font-size: 34px; margin: 0; letter-spacing:.2px; }
+  h2 { font-size: 22px; margin: 0; }
+  .sub { color: var(--muted); margin: 0; font-size: 17px; }
+  .layout { display:grid; grid-template-columns: minmax(0, 2fr) minmax(360px, 1fr); gap:22px; align-items:start; }
+  @media (max-width: 1100px) { .layout { grid-template-columns: 1fr; } }
+  .card { background: color-mix(in srgb, var(--card) 92%, transparent); border:1px solid var(--line); border-radius: 22px; padding: 22px; display:flex; flex-direction:column; gap:16px; box-shadow: 0 10px 40px rgba(0,0,0,.25); }
+  .head { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+  .chips { display:flex; gap:10px; flex-wrap:wrap; }
+  .chip, .btn { appearance:none; border:1px solid var(--line); background: var(--card2); color: var(--fg); border-radius: 999px; min-height: 52px; padding: 0 20px;
+    font-size: 18px; font-weight: 600; cursor:pointer; transition: background .12s, border-color .12s, transform .06s; }
+  .btn { border-radius: 14px; }
+  .chip:hover, .btn:hover { border-color: var(--accent); }
+  .chip:active, .btn:active { transform: scale(.97); }
+  .chip.on { background: var(--sel); border-color: var(--accent); color: #fff; box-shadow: inset 0 0 0 1px var(--accent); }
+  .grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; max-height: 62vh; overflow-y:auto; padding: 4px; }
+  .tile { position:relative; display:flex; flex-direction:column; gap:10px; padding:16px; border-radius:18px; border:2px solid var(--line); background: var(--bg2); cursor:pointer; min-height: 132px; }
+  .tile:hover { border-color: #4a5a8f; }
+  .tile input { position:absolute; opacity:0; pointer-events:none; }
+  .tile.on { border-color: var(--accent); background: linear-gradient(180deg, #1d2754, #161e3e); }
+  .tile .top { display:flex; align-items:center; gap:12px; }
+  .tile .ico { width:46px; height:46px; border-radius:12px; display:grid; place-items:center; font-size:22px; background:#232d52; flex:none; }
+  .tile.vid .ico { background: #183f45; color: var(--accent2); }
+  .tile .check { margin-left:auto; width:32px; height:32px; border-radius:50%; border:2px solid var(--line); display:grid; place-items:center; font-size:18px; color:transparent; flex:none; }
+  .tile.on .check { background: var(--grad); border-color: transparent; color:#0a0e1a; }
+  .tile .nm { font-size: 15px; color: #cdd6f4; overflow-wrap:anywhere; line-height:1.3; }
+  .tile .meta { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:auto; }
+  .badge { font-size: 13px; font-weight:700; padding: 4px 10px; border-radius: 999px; background:#26305a; color: var(--accent); }
+  .badge.v { background:#163b3f; color: var(--accent2); }
+  .date { font-size: 13px; color: var(--muted); }
+  .empty { color: var(--muted); padding: 18px; text-align:center; }
+  .file { display:flex; align-items:center; justify-content:center; gap:12px; min-height:64px; padding:14px; border:2px dashed #46558a; border-radius:18px; color:var(--fg); font-weight:600; cursor:pointer; text-align:center; }
+  .file:hover { border-color: var(--accent2); }
+  .file input { display:none; }
+  .set { display:flex; flex-direction:column; gap:10px; padding-bottom:14px; border-bottom:1px solid var(--line); }
+  .set:last-child { border-bottom:0; padding-bottom:0; }
+  .set .lbl { display:flex; justify-content:space-between; align-items:baseline; gap:10px; font-weight:600; }
+  .set .val { color: var(--accent2); font-variant-numeric: tabular-nums; }
+  .stepper { display:flex; gap:10px; }
+  .stepper button { flex:1; }
+  .toggle { display:flex; justify-content:space-between; align-items:center; gap:14px; min-height:52px; cursor:pointer; font-weight:600; }
+  .toggle input { appearance:none; width:64px; height:36px; border-radius:999px; background:#2a3356; position:relative; flex:none; cursor:pointer; transition: background .15s; }
+  .toggle input::after { content:""; position:absolute; top:4px; left:4px; width:28px; height:28px; border-radius:50%; background:#c9d2f0; transition: left .15s; }
+  .toggle input:checked { background: var(--accent2); }
+  .toggle input:checked::after { left:32px; background:#0a0e1a; }
+  details { border-top:1px solid var(--line); padding-top:12px; }
+  summary { cursor:pointer; font-weight:600; min-height:44px; display:flex; align-items:center; color: var(--muted); }
+  #status { font-size: 16px; color: var(--muted); min-height: 1.4em; }
+  #status.ok { color: var(--ok); } #status.err { color: var(--err); }
+  .bar { position: fixed; left:0; right:0; bottom:0; padding: 16px 28px; background: rgba(10,14,26,.88); backdrop-filter: blur(12px); border-top:1px solid var(--line); z-index: 5; }
+  .bar .in { max-width:1440px; margin:0 auto; display:flex; align-items:center; gap:18px; }
+  .bar .count { font-size: 20px; font-weight:700; }
+  .bar .count small { display:block; font-size:15px; color: var(--muted); font-weight:500; }
+  button.big { appearance:none; border:0; border-radius:18px; min-height:68px; padding: 0 34px; font-size:22px; font-weight:800; background: var(--grad); color:#0a0e1a; margin-left:auto; cursor:pointer; box-shadow: 0 8px 30px rgba(79,216,198,.25); }
+  button.big:disabled { opacity:.35; cursor:default; box-shadow:none; }
+  .help { color: var(--muted); font-size:16px; margin:0; }
+  .help b { color: var(--fg); }
+  kbd { background:#232d52; border-radius:6px; padding:1px 7px; font: 600 15px/1.6 inherit; color: var(--fg); }
+  ol { margin:0; padding-left: 22px; color: var(--muted); font-size: 16px; display:flex; flex-direction:column; gap:6px; }
+  /* phone viewer (old Cardboard mode) */
+  #vr { position:fixed; inset:0; display:none; background:#000; touch-action:none; }
+  #vr canvas { display:block; width:100%; height:100%; }
+  #divider { position:absolute; top:0; bottom:0; left:50%; width:2px; margin-left:-1px; background:#333; pointer-events:none; }
+  #exit { position:absolute; top: max(8px, env(safe-area-inset-top)); left: max(8px, env(safe-area-inset-left)); width:40px; height:40px; border-radius:20px; border:0; background:rgba(255,255,255,.15); color:#fff; font-size:20px; }
+  #ctrl { position:absolute; left: max(12px, env(safe-area-inset-left)); right: max(12px, env(safe-area-inset-right));
+    bottom: calc(max(10px, env(safe-area-inset-bottom)) + 24px); display:none; align-items:center; justify-content:center; gap:12px; padding:8px 12px;
+    background: rgba(0,0,0,.6); border-radius: 12px; color:#fff; font-size: 13px; z-index: 2; touch-action: none; }
+  #ctrl.show { display:flex; }
+  #ctrl button { appearance:none; min-width:56px; min-height:44px; border:0; border-radius:12px; background:rgba(255,255,255,.18); color:#fff; font-size:16px; }
+  #tlabel { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  #hint { position:absolute; bottom: max(10px, env(safe-area-inset-bottom)); left:0; right:0; text-align:center; color:rgba(255,255,255,.55); font-size:12px; pointer-events:none; }
+</style>
+</head>
+<body>
+<div id="setup">
+  <header>
+    <div class="logo">◎</div>
+    <div><h1>VR Viewer</h1><p class="sub">3D-, VR180- und 360°-Bilder und -Videos – in der Meta Quest.</p></div>
+  </header>
+  <div class="layout">
+    <main class="card">
+      <div class="head">
+        <h2>Vom PC</h2>
+        <div class="chips">
+          <button type="button" class="chip" id="selall">Alle sichtbaren</button>
+          <button type="button" class="chip" id="selnone">Auswahl leeren</button>
+          <button type="button" class="chip" id="refresh">↻ Neu laden</button>
+        </div>
+      </div>
+      <div class="chips" id="filters">
+        <button type="button" class="chip on" data-filter="all">Alles</button>
+        <button type="button" class="chip" data-filter="video">Videos</button>
+        <button type="button" class="chip" data-filter="image">Bilder</button>
+        <button type="button" class="chip" data-filter="wide">Breit 3D</button>
+        <button type="button" class="chip" data-filter="vr180">VR180</button>
+        <button type="button" class="chip" data-filter="360">360°</button>
+        <button type="button" class="chip" data-filter="helpers" id="helperchip">+ Hilfsdateien</button>
+      </div>
+      <div class="chips" id="sorts">
+        <button type="button" class="chip on" data-sort="new">Neueste zuerst</button>
+        <button type="button" class="chip" data-sort="old">Älteste zuerst</button>
+        <button type="button" class="chip" data-sort="name">Name</button>
+      </div>
+      <div id="pcfiles" class="grid"><div class="empty">Liste wird geladen…</div></div>
+      <h2>Auf der Brille</h2>
+      <label class="file" for="file">＋ Videos / Bilder auf diesem Gerät auswählen (mehrere möglich)<input id="file" type="file" accept="image/*,video/*" multiple></label>
+      <div id="localfiles" class="grid" style="display:none"></div>
+    </main>
+    <aside class="card side">
+      <h2>Einstellungen</h2>
+      <div class="set">
+        <div class="lbl"><span>Größe in der Brille</span><span class="val"><b id="xrsizev">1.00</b>×</span></div>
+        <div class="stepper"><button type="button" class="btn" data-step="xrsize:/1.1">−</button><button type="button" class="btn" data-step="xrsize:=1">Echt</button><button type="button" class="btn" data-step="xrsize:*1.1">+</button></div>
+        <input id="xrsize" type="hidden" value="1" data-min="0.3" data-max="6" data-dec="2">
+        <p class="help">1.00 = echte Größe. Größer = näher, aber auch stärkerer 3D-Effekt.</p>
+      </div>
+      <div class="set">
+        <div class="lbl"><span>Videos abspielen</span></div>
+        <div class="chips" id="vidlens">
+          <button type="button" class="chip" data-val="0">Ganz</button><button type="button" class="chip" data-val="5">5 s</button>
+          <button type="button" class="chip" data-val="10">10 s</button><button type="button" class="chip" data-val="15">15 s</button>
+          <button type="button" class="chip" data-val="20">20 s</button><button type="button" class="chip" data-val="30">30 s</button>
+        </div>
+        <input id="vidlen" type="hidden" value="0">
+        <p class="help">Bilder bleiben 5 s, dann kommt das nächste. Alles läuft in Schleife.</p>
+      </div>
+      <div class="set">
+        <label class="toggle" for="sound"><span>Ton</span><input id="sound" type="checkbox" checked></label>
+        <div class="lbl"><span>Bluetooth-Verzögerung</span><span class="val"><b id="aoffv">0</b> ms</span></div>
+        <div class="stepper"><button type="button" class="btn" data-step="aoff:-50">−50</button><button type="button" class="btn" data-step="aoff:-10">−10</button><button type="button" class="btn" data-step="aoff:10">+10</button><button type="button" class="btn" data-step="aoff:50">+50</button></div>
+        <input id="aoff" type="hidden" value="0" data-min="0" data-max="500">
+        <p class="help">Für Bluetooth-Kopfhörer: Ton läuft so viel früher. Etwa 250 ms. 0 = aus (Lautsprecher, Kabel).</p>
+      </div>
+      <div class="set">
+        <label class="toggle" for="xrnative"><span>Videos nativ anzeigen (am schärfsten)</span><input id="xrnative" type="checkbox" checked></label>
+        <label class="toggle" for="swap"><span>Augen tauschen</span><input id="swap" type="checkbox"></label>
+        <details>
+          <summary>Format manuell wählen</summary>
+          <div class="chips" id="formats" style="margin-top:10px">
+            <button type="button" class="chip" data-val="auto">Automatisch</button>
+            <button type="button" class="chip" data-val="rectsbs">Breit 3D</button><button type="button" class="chip" data-val="rect">Breit 2D</button>
+            <button type="button" class="chip" data-val="180sbs">VR180 3D</button><button type="button" class="chip" data-val="180tb">VR180 3D übereinander</button><button type="button" class="chip" data-val="180mono">VR180 2D</button>
+            <button type="button" class="chip" data-val="fe180">Fischauge 180°</button><button type="button" class="chip" data-val="fe190">Fischauge 190°</button>
+            <button type="button" class="chip" data-val="fe200">Fischauge 200°</button><button type="button" class="chip" data-val="fe220">Fischauge 220°</button>
+            <button type="button" class="chip" data-val="360tb">360° 3D oben/unten</button><button type="button" class="chip" data-val="360sbs">360° 3D nebeneinander</button>
+            <button type="button" class="chip" data-val="360mono">360° 2D</button>
+            <button type="button" class="chip" data-val="flathsbs">Flach 3D Half-SBS</button><button type="button" class="chip" data-val="flatsbs">Flach 3D Full-SBS</button>
+            <button type="button" class="chip" data-val="flathtb">Flach 3D Half-OU</button><button type="button" class="chip" data-val="flattb">Flach 3D Full-OU</button><button type="button" class="chip" data-val="flatmono">Flach 2D</button>
+          </div>
+          <input id="format" type="hidden" value="auto">
+        </details>
+      </div>
+      <div class="set">
+        <div class="lbl"><span>In der Brille</span></div>
+        <p class="help"><b>Menü</b>: auf den kleinen ☰-Knopf unten zeigen + Trigger/Pinch, oder <kbd>Stick drücken</kbd>.<br>
+          <kbd>Stick ◀ ▶</kbd> vorheriges/nächstes · <kbd>Stick ▲ ▼</kbd> Größe · <kbd>Trigger</kbd>/Pinch Pause ·
+          <kbd>A/X</kbd> −10 s · <kbd>B/Y</kbd> +10 s · Meta-Taste halten: neu zentrieren.</p>
+      </div>
+      <div id="status"></div>
+      <details id="phonebox">
+        <summary>Handy-Viewer (Cardboard)</summary>
+        <div id="phoneonly" style="display:flex;flex-direction:column;gap:12px;margin-top:10px">
+          <div class="lbl"><span>Zoom</span><span class="val"><b id="fovv">30</b>°</span></div>
+          <div class="stepper"><button type="button" class="btn" data-step="fov:-5">−5</button><button type="button" class="btn" data-step="fov:-1">−1</button><button type="button" class="btn" data-step="fov:1">+1</button><button type="button" class="btn" data-step="fov:5">+5</button></div><input id="fov" type="hidden" value="30" data-min="5" data-max="179">
+          <div class="lbl"><span>Linsenabstand</span><span class="val"><b id="lensv">65.0</b> mm</span></div>
+          <div class="stepper"><button type="button" class="btn" data-step="lens:-1">−1</button><button type="button" class="btn" data-step="lens:-0.5">−0.5</button><button type="button" class="btn" data-step="lens:0.5">+0.5</button><button type="button" class="btn" data-step="lens:1">+1</button></div><input id="lens" type="hidden" value="65" data-min="40" data-max="75" data-dec="1">
+          <div class="lbl"><span>Bildhöhe</span><span class="val"><b id="vshiftv">0.0</b> mm</span></div>
+          <div class="stepper"><button type="button" class="btn" data-step="vshift:-0.5">−0.5</button><button type="button" class="btn" data-step="vshift:0.5">+0.5</button></div><input id="vshift" type="hidden" value="0" data-min="-10" data-max="10" data-dec="1">
+          <button type="button" class="btn" id="testpic">Testbild laden</button>
+          <button id="start" class="btn" disabled>Auf dem Handy ansehen</button>
+          <ol>
+            <li>Handy quer in die Brille, geradeaus schauen, Bildschirm antippen = neu zentrieren.</li>
+            <li>Ein Auge schließen: Jedes Auge sollte sein eigenes Bild sehen.</li>
+          </ol>
+        </div>
+      </details>
+    </aside>
+  </div>
+</div>
+<div class="bar"><div class="in">
+  <div class="count"><span id="selcount">Nichts ausgewählt</span><small id="selinfo">Kacheln antippen zum Auswählen</small></div>
+  <button id="startxr" class="big" disabled>▶ In der Brille ansehen</button>
+</div></div>
+
+<div id="vr"><div id="divider"></div><button id="exit" aria-label="Exit VR">×</button><div id="ctrl"><button id="pp" type="button" aria-label="Play / pause">❚❚</button><button id="back10" type="button">−10 s</button><button id="fwd10" type="button">+10 s</button><span id="tlabel">0:00 / 0:00</span></div><div id="hint">tap = re-center</div></div>
+
+<script src="three.min.js"></script>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const statusEl = $("status"), startBtn = $("start");
+  let media = null, mediaW = 0, mediaH = 0, fileName = "", isVideo = false, objectUrl = null;
+
+  function setStatus(msg, cls) { statusEl.textContent = msg; statusEl.className = cls || ""; }
+
+  function fileFov() { const m = fileName.toLowerCase().match(/_fov(\d+)/); return m ? Number(m[1]) : 90; }
+  // Format from the file name alone (null = name says nothing). Covers the generator naming below and the usual naming of
+  // VR downloads: 180 / 360, LR / SBS / 3dh = side by side, TB / OU / 3dv = over-under, MONO, oculus / vive / quest = VR.
+  function nameFormat(name) {
+    const n = name.toLowerCase(), t = (w) => new RegExp("(^|[^a-z0-9])(" + w + ")([^a-z0-9]|$)").test(n);
+    if (/(^|_)depth(_|\.)/.test(n) || /extended/.test(n)) return "flatmono";      // helper files: plain picture
+    if (/_fov\d+/.test(n)) return /sbs/.test(n) ? "rectsbs" : "rect";               // wide pictures/videos with known field of view
+    if (/_180_sbs/.test(n) || (/vr180/.test(n) && /sbs/.test(n))) return "180sbs";
+    const fe = n.match(/fisheye[_-]?(\d{3})|(?:^|[^a-z0-9])fe(\d{3})|mkx(2\d\d)|vrca(2\d\d)/);
+    if (fe || /fisheye|rf52|canon_?rf|dual_?fisheye/.test(n)) {                  // fisheye lenses: always side by side
+      const deg = fe ? Number(fe[1] || fe[2] || fe[3] || fe[4]) : /rf52|canon_?rf/.test(n) ? 190 : 180;
+      return "fe" + [180, 190, 200, 220].reduce((a, b) => Math.abs(b - deg) < Math.abs(a - deg) ? b : a);
+    }
+    if (/(^|[^a-z0-9])(h-?sbs|half[-_. ]?sbs|hsbs)([^a-z0-9]|$)/.test(n)) return "flathsbs";          // 3D films
+    if (/(^|[^a-z0-9])(h-?(ou|tab|tb)|half[-_. ]?(ou|tab|tb|overunder))([^a-z0-9]|$)/.test(n)) return "flathtb";
+    if (/(^|[^a-z0-9])(f-?sbs|full[-_. ]?sbs|fsbs)([^a-z0-9]|$)/.test(n)) return "flatsbs";
+    if (/(^|[^a-z0-9])(f-?(ou|tab)|full[-_. ]?(ou|tab|tb|overunder))([^a-z0-9]|$)/.test(n)) return "flattb";
+    const tb = t("tb|ou|3dv|overunder|over_under|top_bottom|topbottom|tab"), lr = t("lr|rl|sbs|3dh|side_by_side|sidebyside");
+    const mono = t("mono|2d"), s360 = t("360|360x180") || /360x180|_360_/.test(n), s180 = t("180|vr180|180x180") || /180x180|_180_/.test(n);
+    const vr = /(oculus|vive|quest|gearvr|gear_vr|psvr|pico|smartphone_vr|_vr[_.-]|\bvr\b)/.test(n);
+    if (s360) return mono ? "360mono" : tb ? "360tb" : lr ? "360sbs" : null;
+    if (s180 || vr) return mono ? "180mono" : tb ? "180tb" : lr ? "180sbs" : (s180 ? null : null);
+    if (tb) return null; if (lr) return null;
+    return null;
+  }
+  function detectFormat(w, h, name) {
+    const r = w / h, n = name.toLowerCase(), f = nameFormat(name);
+    if (f) return f;
+    const tb = /(^|[^a-z0-9])(tb|ou|3dv|overunder|top_bottom)([^a-z0-9]|$)/.test(n), lr = /(^|[^a-z0-9])(lr|rl|sbs|3dh)([^a-z0-9]|$)/.test(n);
+    const s180 = /(^|[^a-z0-9])(180|vr180)([^a-z0-9]|$)|_180_|180x180/.test(n), s360 = /(^|[^a-z0-9])360([^a-z0-9]|$)|_360_/.test(n);
+    const vr = /(oculus|vive|quest|gearvr|gear_vr|psvr|pico|_vr[_.-])/.test(n);
+    if (s180 || vr) {                                          // VR180: decide by shape (each eye is square)
+      if (r > 1.8) return "180sbs";
+      if (r < 0.6) return "180tb";
+      if (r > 0.9 && r < 1.1) return vr && !s180 ? "360tb" : "180mono";
+      return "180sbs";
+    }
+    if (s360) return r > 3.5 ? "360sbs" : r > 0.9 && r < 1.1 ? "360tb" : "360mono";
+    if (vr && tb) return "180tb";
+    const film3d = lr || /(^|[^a-z0-9])3d([^a-z0-9]|$)/.test(n);
+    if (film3d && !tb && r > 1.5 && r < 2.0) return "flathsbs";  // 16:9 frame with two squeezed pictures side by side
+    if (tb && r > 1.5 && r < 2.0) return "flathtb";              // 16:9 frame with two squeezed pictures on top of each other
+    if (tb && r > 0.8 && r < 0.95) return "flattb";              // two full 16:9 pictures on top of each other
+    if (/vr180/.test(n) && r > 0.9 && r < 1.1) return "180mono";
+    if (tb || (r > 0.9 && r < 1.1)) return "360tb";
+    if (r > 3.6 && r < 4.4) return "360sbs";
+    if (r > 1.9 && r < 2.1) return lr ? "180sbs" : "360mono";   // 2:1 side by side is practically always VR180
+    if (r > 2.4) return "flatsbs";
+    return "flatmono";
+  }
+  const LABEL = { "rectsbs": "Breit 3D", "rect": "Breit 2D", "180sbs": "VR180 3D nebeneinander", "180tb": "VR180 3D übereinander", "180mono": "VR180 2D",
+                  "360tb": "360° 3D übereinander", "360sbs": "360° 3D nebeneinander", "360mono": "360° 2D", "flatsbs": "Flach 3D (Full-SBS)", "flatmono": "Flach 2D",
+                  "flathsbs": "Flach 3D (Half-SBS)", "flattb": "Flach 3D (Full-OU)", "flathtb": "Flach 3D (Half-OU)",
+                  "fe180": "Fischauge 180° 3D", "fe190": "Fischauge 190° 3D", "fe200": "Fischauge 200° 3D", "fe220": "Fischauge 220° 3D" };
+  const isFisheye = (f) => /^fe\d+$/.test(f);
+  const isTB = (f) => f === "360tb" || f === "180tb" || f === "flattb" || f === "flathtb";        // left eye on top
+  function eyeAspectFor(f, w, h) {                             // width/height of ONE eye's picture as it should look
+    if (f === "360tb" || f === "flattb") return w / (h / 2);
+    if (f === "360sbs" || f === "flatsbs" || f === "rectsbs") return (w / 2) / h;
+    return w / h;                                              // mono, and Half-SBS / Half-OU (squeezed halves are stretched back)
+  }
+  // Dome for fisheye pictures/videos (equidistant lens: distance from the image centre grows evenly with the angle).
+  // Built around the forward axis (-Z); the circle of the lens image is inscribed in each eye's square.
+  function fisheyeGeometry(radius, fovDeg) {
+    const N = 72, M = 144, half = fovDeg * Math.PI / 360, pos = [], uv = [], idx = [];
+    for (let i = 0; i <= N; i++) {
+      const th = half * i / N, r = 0.5 * i / N;
+      for (let j = 0; j <= M; j++) {
+        const ph = 2 * Math.PI * j / M;
+        pos.push(radius * Math.sin(th) * Math.cos(ph), radius * Math.sin(th) * Math.sin(ph), -radius * Math.cos(th));
+        uv.push(0.5 + r * Math.cos(ph), 0.5 + r * Math.sin(ph));
+      }
+    }
+    for (let i = 0; i < N; i++) for (let j = 0; j < M; j++) { const a = i * (M + 1) + j, b = a + M + 1; idx.push(a, b, a + 1, b, b + 1, a + 1); }
+    const g = new THREE.BufferGeometry();
+    g.setIndex(idx); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+    return g;
+  }
+  // per-file choice (VR menu ◀ ▶), remembered on this device
+  let fileFormats = {}; try { fileFormats = JSON.parse(localStorage.getItem("vrv_fmt") || "{}"); } catch (e) {}
+  function currentFormat() {
+    const v = $("format").value;
+    if (v !== "auto") return v;
+    return fileFormats[fileName] || detectFormat(mediaW, mediaH, fileName);
+  }
+  let gpuMax = null;
+  function gpuLimit() {
+    if (gpuMax) return gpuMax;
+    try { const c = document.createElement("canvas"); const gl = c.getContext("webgl2") || c.getContext("webgl");
+          gpuMax = gl.getParameter(gl.MAX_TEXTURE_SIZE); } catch (e) { gpuMax = 0; }
+    return gpuMax;
+  }
+  function describe() {
+    if (!media) return;
+    const f = currentFormat(), lim = gpuLimit();
+    const eyeW = (f === "360sbs" || f === "flatsbs" || f === "180sbs" || f === "rectsbs") ? mediaW / 2 : mediaW;
+    let res = `${mediaW}×${mediaH}`;
+    if (!isVideo && lim && Math.max(mediaW, mediaH) > lim) res += ` (shown reduced: GPU limit ${lim})`;
+    let detail = "";
+    if (f.startsWith("360")) detail = ` – ${(eyeW / 360).toFixed(1)} px per degree (sharp needs ~11+)`;
+    if (f === "180sbs" || f === "180tb" || f === "180mono") detail = ` – ${(eyeW / 180).toFixed(1)} px per degree (sharp needs ~11+)`;
+    if (f === "rectsbs" || f === "rect") {
+      const fv = fileFov(), eyeLong = Math.max(eyeW, mediaH);
+      detail = ` – ${fv}° wide, ${((eyeLong / 2) / Math.tan(fv * Math.PI / 360) * Math.PI / 180).toFixed(1)} px per degree in the middle`;
+    }
+    setStatus(`${fileName} – ${res} – ${$("format").value === "auto" ? "detected" : "set to"}: ${LABEL[f]}${detail}`, "ok");
+  }
+
+  // Load one picture or video; resolves with everything needed to show it
+  // Two reusable video players. Some mobile browsers only let a player make sound if it was started by a tap, so both are
+  // "unlocked" when you tap View and then take turns (one plays, the other loads the next video).
+  const vidPool = []; let poolNext = 0;
+  function newVideo() { const v = document.createElement("video"); v.playsInline = true; v.setAttribute("playsinline", ""); v.preload = "auto"; return v; }
+  function unlockPlayers() {
+    if (!vidPool.length) for (let k = 0; k < 2; k++) vidPool.push(newVideo());
+    vidPool.forEach(v => { try { v.load(); const p = v.play(); if (p) p.catch(() => {}); } catch (e) {} });
+  }
+  function takeVideo() {                                      // a free player (never the one that is showing)
+    for (let k = 0; k < vidPool.length; k++) {
+      const v = vidPool[(poolNext + k) % vidPool.length];
+      if (!v.__busy) { poolNext = (poolNext + k + 1) % vidPool.length; v.__busy = true; return v; }
+    }
+    const v = newVideo(); v.__busy = true; return v;          // all busy: an extra player (may start silent)
+  }
+  function loadMedia(item) {
+    return new Promise((resolve, reject) => {
+      if (item.video) {
+        const v = takeVideo();
+        v.muted = true; v.loop = false;                         // load silently; sound is switched on when it is shown
+        v.onloadedmetadata = () => resolve({ media: v, w: v.videoWidth, h: v.videoHeight, video: true, name: item.name, url: item.url, ac: new AbortController() });
+        v.onerror = () => { v.__busy = false; reject(new Error("video can't be played here (try MP4 / H.264)")); };
+        v.src = item.url;
+      } else {
+        const img = new Image();
+        img.onload = () => {
+          const done = () => resolve({ media: img, w: img.naturalWidth, h: img.naturalHeight, video: false, name: item.name });
+          (img.decode ? img.decode() : Promise.resolve()).then(done, done);
+        };
+        img.onerror = () => reject(new Error("picture could not be loaded"));
+        img.src = item.url;
+      }
+    });
+  }
+  function release(m) {
+    if (m && m.video) { try { m.ac && m.ac.abort(); m.media.pause(); m.media.onloadedmetadata = m.media.onerror = null; m.media.removeAttribute("src"); m.media.load(); } catch (e) {} m.media.__busy = false; }
+  }
+  function useMedia(m) { media = m.media; mediaW = m.w; mediaH = m.h; isVideo = m.video; fileName = m.name; }
+
+  // A single file from this phone (used when nothing on the PC is ticked)
+  // ---------- file tiles (PC list and files on this device) ----------
+  const IMG = /\.(png|jpe?g|webp)$/i, VID = /\.(mp4|webm|mov|m4v)$/i;
+  function classify(n) {                                       // type for badges and filters
+    const l = n.toLowerCase(), video = VID.test(l);
+    let kind = "flat", label = "2D";
+    if (/(^|_)depth(_|\.)/.test(l)) { kind = "helper"; label = "Tiefenkarte"; }
+    else if (/_fov\d+/.test(l)) { kind = /sbs/.test(l) ? "wide" : "helper"; label = /sbs/.test(l) ? "Breit 3D" : "Breit 2D"; }
+    else if (/extended|_flat|flat_/.test(l)) { kind = "helper"; label = "2D-Vorlage"; }
+    else if (/_180_sbs/.test(l) || (/vr180/.test(l) && /sbs/.test(l))) { kind = "vr180"; label = "VR180 3D"; }
+    else if (/vr180/.test(l)) { kind = "vr180"; label = "VR180"; }
+    else if (/_360_tb|_tb_|360/.test(l)) { kind = "360"; label = /_tb|sbs/.test(l) ? "360° 3D" : "360°"; }
+    else if (/sbs/.test(l)) { kind = "flat"; label = "3D"; }
+    if (kind === "flat" && /^flat(h?sbs|h?tb)$/.test(nameFormat(n) || "")) label = { flathsbs: "3D Half-SBS", flatsbs: "3D Full-SBS", flathtb: "3D Half-OU", flattb: "3D Full-OU" }[nameFormat(n)];
+    const nf = nameFormat(n);                                  // VR downloads (180 / 360 / oculus / LR / TB …)
+    if (kind === "flat" && nf && isFisheye(nf)) { kind = "vr180"; label = LABEL[nf].replace(" 3D", ""); }
+    else if (kind === "flat" && nf && /^(180|360)/.test(nf)) { kind = nf.startsWith("180") ? "vr180" : "360"; label = LABEL[nf].replace(" nebeneinander", "").replace(" übereinander", " TB"); }
+    return { kind, label, video };
+  }
+  const fmtDate = (t) => { if (!t) return ""; const d = new Date(t * 1000);
+    return d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" }) + " " + d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }); };
+  function makeTile(name, on, onToggle, t) {
+    const c = classify(name);
+    const tile = document.createElement("label"); tile.className = "tile" + (c.video ? " vid" : "") + (on ? " on" : "");
+    const cb = document.createElement("input"); cb.type = "checkbox"; cb.value = name; cb.checked = on;
+    cb.addEventListener("change", () => { tile.classList.toggle("on", cb.checked); onToggle(cb.checked); });
+    tile.innerHTML = `<div class="top"><div class="ico">${c.video ? "▶" : "▣"}</div><div class="check">✓</div></div><div class="nm"></div>
+      <div class="meta"><span class="badge${c.video ? " v" : ""}">${c.video ? "Video" : "Bild"}</span><span class="badge">${c.label}</span><span class="date">${fmtDate(t)}</span></div>`;
+    tile.querySelector(".nm").textContent = name.replace(/_0*(\d+)_?(?=\.\w+$)/, " · $1").replace(/\.\w+$/, "");
+    tile.title = name; tile.prepend(cb);
+    return tile;
+  }
+  // Files chosen on this device (headset / phone): they stay on the device and are opened directly
+  let localItems = [];
+  const localChecked = () => localItems.filter(it => it.on);
+  function renderLocal() {
+    const box = $("localfiles"); box.textContent = "";
+    box.style.display = localItems.length ? "" : "none";
+    localItems.forEach(it => box.appendChild(makeTile(it.name, it.on, (on) => { it.on = on; selectionChanged(); }, 0)));
+    selectionChanged();
+  }
+  $("file").addEventListener("change", (e) => {
+    const fs = [...(e.target.files || [])];
+    if (!fs.length) return;
+    localItems.forEach(it => { if (it.own) URL.revokeObjectURL(it.url); });
+    localItems = fs.sort((x, y) => x.name.localeCompare(y.name)).map(f => ({ url: URL.createObjectURL(f), name: f.name,
+      video: f.type.startsWith("video/") || VID.test(f.name), on: true, own: true }));
+    e.target.value = "";                                       // the same files can be chosen again
+    renderLocal();
+  });
+  $("testpic").addEventListener("click", () => {
+    localItems = localItems.filter(it => it.name !== "test_360_TB.png");
+    localItems.push({ url: "test_360_TB.png", name: "test_360_TB.png", video: false, on: true });
+    renderLocal();
+  });
+
+  // File list from the server folder files/ with filters and sorting
+  let pcFiles = [];                                            // [{n, t}]
+  let filter = "all", sortBy = "new", showHelpers = false;
+  function savedSelection() { try { return new Set(JSON.parse(localStorage.getItem("vrv_sel") || "[]")); } catch (e) { return new Set(); } }
+  let pcSel = savedSelection();
+  function checkedNames() { return pcFiles.map(f => f.n).filter(n => pcSel.has(n)); }
+  function visiblePC() {
+    let list = pcFiles.filter(f => {
+      const c = classify(f.n);
+      if (c.kind === "helper" && !showHelpers) return false;
+      if (filter === "video") return c.video;
+      if (filter === "image") return !c.video;
+      if (filter === "wide" || filter === "vr180" || filter === "360") return c.kind === filter;
+      return true;
+    });
+    const byName = (x, y) => x.n.localeCompare(y.n);
+    if (sortBy === "name") list.sort(byName);
+    else if (pcFiles.some(f => f.t)) list.sort((x, y) => sortBy === "new" ? y.t - x.t : x.t - y.t);
+    else list.sort(byName), sortBy === "new" && list.reverse();
+    return list;
+  }
+  function renderPC() {
+    const box = $("pcfiles"); box.textContent = "";
+    const list = visiblePC();
+    if (!list.length) { box.innerHTML = `<div class="empty">${pcFiles.length ? "Keine Dateien für diesen Filter." : "Noch keine Bilder oder Videos gefunden."}</div>`; }
+    list.forEach(f => box.appendChild(makeTile(f.n, pcSel.has(f.n), (on) => { on ? pcSel.add(f.n) : pcSel.delete(f.n); selectionChanged(); }, f.t)));
+    selectionChanged();
+  }
+  function selectionChanged() {
+    try { localStorage.setItem("vrv_sel", JSON.stringify([...pcSel])); } catch (e) {}
+    const n = [...checkedNames(), ...localChecked().map(it => it.name)], vids = n.filter(x => VID.test(x)).length;
+    $("selcount").textContent = n.length ? `${n.length} ausgewählt` : "Nichts ausgewählt";
+    $("selinfo").textContent = n.length ? `${n.length - vids} ${n.length - vids === 1 ? "Bild" : "Bilder"} · ${vids} ${vids === 1 ? "Video" : "Videos"} · laufen in Schleife` : "Kacheln antippen zum Auswählen";
+    updateStart();
+  }
+  function updateStart() {
+    const none = !(checkedNames().length || localChecked().length);
+    startBtn.disabled = none; $("startxr").disabled = none;
+  }
+  async function loadList() {
+    const box = $("pcfiles");
+    box.innerHTML = '<div class="empty">Liste wird geladen…</div>';
+    try {
+      let files = null;
+      try {                                                    // PC server with dates (home network)
+        const r = await fetch("__list.json?v=" + Date.now(), { cache: "no-store" });
+        if (r.ok) files = (await r.json()).filter(f => IMG.test(f.n) || VID.test(f.n));
+      } catch (e) {}
+      if (!files) {                                            // plain folder listing (no dates)
+        const r = await fetch("files/?v=" + Date.now(), { cache: "no-store" });
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        const doc = new DOMParser().parseFromString(await r.text(), "text/html");
+        files = [...doc.querySelectorAll("a")].map(a => decodeURIComponent(a.getAttribute("href") || ""))
+          .filter(n => n && !n.endsWith("/") && (IMG.test(n) || VID.test(n))).map(n => ({ n, t: 0 }));
+      }
+      pcFiles = files;
+      const names = new Set(files.map(f => f.n)); pcSel = new Set([...pcSel].filter(n => names.has(n)));
+      renderPC();
+    } catch (e) { pcFiles = []; box.innerHTML = '<div class="empty">PC nicht erreichbar – wähle unten Videos / Bilder auf der Brille.</div>'; updateStart(); }
+  }
+  const chipGroup = (id, attr, onPick) => $(id).querySelectorAll(`[${attr}]`).forEach(b => b.addEventListener("click", () => onPick(b)));
+  chipGroup("filters", "data-filter", (b) => {
+    if (b.dataset.filter === "helpers") { showHelpers = !showHelpers; b.classList.toggle("on", showHelpers); }
+    else { filter = b.dataset.filter; $("filters").querySelectorAll("[data-filter]:not(#helperchip)").forEach(x => x.classList.toggle("on", x === b)); }
+    renderPC();
+  });
+  chipGroup("sorts", "data-sort", (b) => { sortBy = b.dataset.sort; $("sorts").querySelectorAll("[data-sort]").forEach(x => x.classList.toggle("on", x === b)); renderPC(); });
+  // chips that set a hidden value (format, video length)
+  function bindValueChips(groupId, inputId, evt) {
+    const sync = () => $(groupId).querySelectorAll("[data-val]").forEach(x => x.classList.toggle("on", x.dataset.val === $(inputId).value));
+    chipGroup(groupId, "data-val", (b) => { $(inputId).value = b.dataset.val; $(inputId).dispatchEvent(new Event(evt)); sync(); });
+    $(inputId).addEventListener(evt, sync); sync();
+    return sync;
+  }
+  $("selall").addEventListener("click", () => { visiblePC().forEach(f => pcSel.add(f.n)); renderPC(); });
+  $("selnone").addEventListener("click", () => { pcSel.clear(); localItems.forEach(it => it.on = false); renderPC(); renderLocal(); });
+  $("refresh").addEventListener("click", loadList);
+  loadList();
+  $("format").addEventListener("change", describe);
+  // Settings: remembered on this phone
+  try { const v = localStorage.getItem("vrv_sound"); if (v !== null) $("sound").checked = v === "1"; } catch (e) {}
+  $("sound").addEventListener("change", () => { try { localStorage.setItem("vrv_sound", $("sound").checked ? "1" : "0"); } catch (e) {} });
+  const SETTINGS = ["fov", "lens", "vshift", "vidlen", "aoff"];
+  const showVal = () => {
+    $("fovv").textContent = $("fov").value;
+    $("lensv").textContent = Number($("lens").value).toFixed(1);
+    $("vshiftv").textContent = Number($("vshift").value).toFixed(1);
+    $("aoffv").textContent = $("aoff").value;
+  };
+  SETTINGS.forEach(id => {
+    try { const v = localStorage.getItem("vrv_" + id); if (v !== null) $(id).value = v; } catch (e) {}
+    $(id).addEventListener("input", () => { showVal(); try { localStorage.setItem("vrv_" + id, $(id).value); } catch (e) {} });
+  });
+  showVal();
+  const syncVidlen = bindValueChips("vidlens", "vidlen", "input");
+  bindValueChips("formats", "format", "change");
+  // -/+ buttons (no sliders): change the hidden value in fixed steps
+  document.querySelectorAll("[data-step]").forEach(b => b.addEventListener("click", () => {
+    const [id, op] = b.dataset.step.split(":"), el = $(id);
+    const min = Number(el.dataset.min), max = Number(el.dataset.max), dec = Number(el.dataset.dec || 0);
+    let v = Number(el.value);
+    if (op[0] === "*") v *= Number(op.slice(1)); else if (op[0] === "/") v /= Number(op.slice(1));
+    else if (op[0] === "=") v = Number(op.slice(1)); else v += Number(op);
+    el.value = Math.max(min, Math.min(max, v)).toFixed(dec);
+    el.dispatchEvent(new Event("input"));
+  }));
+  // CSS pixels per millimetre on typical phones (≈460 ppi, 3 device pixels per CSS pixel)
+  const PX_PER_MM = 460 / 3 / 25.4;
+
+  // ---------- rendering ----------
+  let renderer, sceneL, sceneR, camL, camR, running = false, wakeLock = null;
+  const qDevice = new THREE.Quaternion(), qYaw = new THREE.Quaternion(), qFinal = new THREE.Quaternion();
+  let yawOffset = 0, haveOrientation = false, orient = { a: 0, b: 0, g: 0 };
+  let dragLon = 0, dragLat = 0;
+
+  function screenAngle() {
+    if (screen.orientation && typeof screen.orientation.angle === "number") return screen.orientation.angle;
+    return typeof window.orientation === "number" ? window.orientation : 0;
+  }
+  // Standard device-orientation -> camera quaternion (as in three.js DeviceOrientationControls)
+  const zee = new THREE.Vector3(0, 0, 1), euler = new THREE.Euler(), q0 = new THREE.Quaternion(),
+        q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
+  function deviceQuaternion(out) {
+    const d = THREE.MathUtils.degToRad;
+    euler.set(d(orient.b), d(orient.a), -d(orient.g), "YXZ");
+    out.setFromEuler(euler); out.multiply(q1); out.multiply(q0.setFromAxisAngle(zee, -d(screenAngle())));
+    return out;
+  }
+  function onOrientation(e) {
+    if (e.alpha == null) return;
+    orient = { a: e.alpha, b: e.beta, g: e.gamma }; haveOrientation = true;
+  }
+
+  function fitTexture(src, w, h) {
+    // Downscale pictures larger than the GPU limit
+    const max = (xrMode ? xrRenderer : renderer).capabilities.maxTextureSize;
+    if (isVideo || (w <= max && h <= max)) return src;
+    const s = max / Math.max(w, h), c = document.createElement("canvas");
+    c.width = Math.floor(w * s); c.height = Math.floor(h * s);
+    c.getContext("2d").drawImage(src, 0, 0, c.width, c.height);
+    return c;
+  }
+
+  function disposeScene(sc) {
+    if (!sc) return;
+    sc.traverse(o => { if (o.isMesh) { o.geometry.dispose(); if (o.material.map) o.material.map.dispose(); o.material.dispose(); } });
+  }
+  function buildScenes() {
+    const fmt = currentFormat(), swap = $("swap").checked;
+    disposeScene(sceneL); disposeScene(sceneR);
+    sceneL = new THREE.Scene(); sceneR = new THREE.Scene();
+    const src = fitTexture(media, mediaW, mediaH);
+    const makeTex = () => {
+      const t = isVideo ? new THREE.VideoTexture(media) : new THREE.Texture(src);
+      t.encoding = THREE.sRGBEncoding; t.magFilter = THREE.LinearFilter;
+      if (isVideo) { t.minFilter = THREE.LinearFilter; t.generateMipmaps = false; }
+      else { t.minFilter = THREE.LinearMipmapLinearFilter; t.generateMipmaps = true; }   // smoother, sharper when scaled down
+      t.anisotropy = renderer.capabilities.getMaxAnisotropy();                            // sharper toward top/bottom
+      t.needsUpdate = true;
+      return t;
+    };
+    const tL = makeTex();
+    const tR = isVideo ? makeTex() : tL.clone();   // pictures: both eyes share one GPU copy
+    tR.needsUpdate = true;
+    // flipY is on: v=1 is the TOP of the file. Top half = left eye, left half = left eye.
+    const setHalf = (t, eye) => {
+      if (isTB(fmt)) { t.repeat.set(1, 0.5); t.offset.set(0, eye === "L" ? 0.5 : 0); }
+      else if (fmt === "360sbs" || fmt === "flatsbs" || fmt === "flathsbs" || fmt === "180sbs" || fmt === "rectsbs" || isFisheye(fmt)) { t.repeat.set(0.5, 1); t.offset.set(eye === "L" ? 0 : 0.5, 0); }
+    };
+    setHalf(tL, swap ? "R" : "L"); setHalf(tR, swap ? "L" : "R");
+
+    const eyeAspect = eyeAspectFor(fmt, mediaW, mediaH);
+    const makeMesh = (tex) => {
+      let geo;
+      if (isFisheye(fmt)) return new THREE.Mesh(fisheyeGeometry(50, Number(fmt.slice(2))), new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }));
+      if (fmt === "180sbs" || fmt === "180tb" || fmt === "180mono") {   // front half sphere: -90°..+90° around, full height
+        geo = new THREE.SphereGeometry(50, 64, 64, Math.PI / 2, Math.PI, 0, Math.PI); geo.scale(-1, 1, 1);
+        const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex }));
+        m.rotation.y = -Math.PI / 2;
+        return m;
+      }
+      if (fmt.startsWith("360")) {
+        geo = new THREE.SphereGeometry(50, 96, 48); geo.scale(-1, 1, 1);
+        const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex }));
+        m.rotation.y = -Math.PI / 2;   // image center = straight ahead
+        return m;
+      }
+      if (fmt === "rectsbs" || fmt === "rect") {   // a window exactly as wide as the photo's field of view
+        const d = 5, half = d * Math.tan(fileFov() * Math.PI / 360);          // half of the longer side
+        const w = eyeAspect >= 1 ? 2 * half : 2 * half * eyeAspect, h = eyeAspect >= 1 ? 2 * half / eyeAspect : 2 * half;
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex }));
+        m.position.set(0, 0, -d);
+        return m;
+      }
+      const hgt = 2.2, wid = hgt * eyeAspect;   // flat: a big screen 3 m in front of you
+      geo = new THREE.PlaneGeometry(wid, hgt);
+      const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex }));
+      m.position.set(0, 0, -3);
+      return m;
+    };
+    sceneL.add(makeMesh(tL)); sceneR.add(makeMesh(tR));
+  }
+
+  function resize() {
+    const w = window.innerWidth, h = window.innerHeight;
+    renderer.setSize(w, h, false);
+    const fov = Number($("fov").value);
+    [camL, camR].forEach(c => { c.fov = fov; c.aspect = (w / 2) / h; c.updateProjectionMatrix(); });
+  }
+
+  function frame() {
+    if (!running) return;
+    if (haveOrientation) deviceQuaternion(qDevice);
+    else qDevice.setFromEuler(new THREE.Euler(dragLat, dragLon, 0, "YXZ"));
+    qYaw.setFromAxisAngle(new THREE.Vector3(0, 1, 0), yawOffset);
+    qFinal.copy(qYaw).multiply(qDevice);
+    camL.quaternion.copy(qFinal); camR.quaternion.copy(qFinal);
+    const w = window.innerWidth, h = window.innerHeight;
+    // Center each eye's picture under its lens: lens centers are (lens distance) apart around the screen middle.
+    const sep = Number($("lens").value) * PX_PER_MM, dy = Number($("vshift").value) * PX_PER_MM;
+    const xL = w / 2 - sep / 2 - w / 4, xR = w / 2 + sep / 2 - w / 4;   // viewport left edges (each w/2 wide)
+    renderer.setScissorTest(false);
+    renderer.setClearColor(0x000000); renderer.clear();
+    renderer.setScissorTest(true);
+    renderer.setScissor(0, 0, w / 2, h); renderer.setViewport(xL, dy, w / 2, h); renderer.render(sceneL, camL);
+    renderer.setScissor(w / 2, 0, w / 2, h); renderer.setViewport(xR, dy, w / 2, h); renderer.render(sceneR, camR);
+    requestAnimationFrame(frame);
+  }
+
+  function recenter() {
+    const q = haveOrientation ? deviceQuaternion(new THREE.Quaternion()) : new THREE.Quaternion().setFromEuler(new THREE.Euler(dragLat, dragLon, 0, "YXZ"));
+    yawOffset = -new THREE.Euler().setFromQuaternion(q, "YXZ").y;
+  }
+
+  // ---------- playlist: ticked files in list order, looping; videos for their length, pictures 5 s ----------
+  const PICTURE_SECONDS = 5;
+  let playToken = 0, stopWait = null, current = null, jumpReq = 0;
+  const hintEl = $("hint");
+  function hint(msg) { hintEl.textContent = msg; }
+  function waitDone(m, loopAlone, token) {
+    return new Promise(resolve => {
+      stopWait = resolve;
+      if (loopAlone) return;                                  // only one item: stays / loops until you exit
+      if (m.video) {
+        const lim = Number($("vidlen").value);                 // 0 = full length, else only the first N seconds
+        const d = isFinite(m.media.duration) ? m.media.duration : 30;
+        m.media.addEventListener("ended", () => resolve(), { once: true, signal: m.ac.signal });
+        if (lim > 0 && lim < d) {
+          const onT = () => { if (m.media.currentTime >= lim) { m.media.removeEventListener("timeupdate", onT); m.media.pause(); resolve(); } };
+          m.media.addEventListener("timeupdate", onT, { signal: m.ac.signal });
+        }
+        let lastT = -1, lastMove = Date.now();                // safety net: skip only if playing but stuck for 15 s
+        const wd = setInterval(() => {
+          if (m.media.paused || m.media.currentTime !== lastT) { lastT = m.media.currentTime; lastMove = Date.now(); }
+          else if (Date.now() - lastMove > 15000) { clearInterval(wd); resolve(); }
+        }, 1000);
+        m.ac.signal.addEventListener("abort", () => clearInterval(wd));
+      } else setTimeout(() => resolve(), PICTURE_SECONDS * 1000);
+    });
+  }
+  // ---------- seek bar (videos): appears for 4 s after a tap ----------
+  const ctrl = $("ctrl"), tlabel = $("tlabel"), pp = $("pp");
+  let ctrlTimer = null, seeking = false;
+  const fmtT = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
+  function vidEnd(m) {
+    const d = isFinite(m.media.duration) ? m.media.duration : 0, lim = Number($("vidlen").value);
+    return lim > 0 && lim < d ? lim : d;
+  }
+  function showCtrl() {
+    if (!current || !current.video) { ctrl.classList.remove("show"); return; }
+    ctrl.classList.add("show"); updateCtrl(true);
+    clearTimeout(ctrlTimer);
+    ctrlTimer = setTimeout(function hide() {             // stays while dragging or paused
+      if (seeking || (current && current.video && current.media.paused)) ctrlTimer = setTimeout(hide, 1000); else ctrl.classList.remove("show");
+    }, 4000);
+  }
+  function updateCtrl(force) {
+    if (!current || !current.video || (seeking && !force)) return;
+    const end = vidEnd(current), t = Math.min(current.media.currentTime, end || 0);
+    tlabel.textContent = `${fmtT(t)} / ${fmtT(end)}`;
+    pp.textContent = current.media.paused ? "▶" : "❚❚";
+  }
+  setInterval(() => { if (ctrl.classList.contains("show")) updateCtrl(); }, 250);
+  $("back10").addEventListener("click", () => { seekBy(-10); showCtrl(); });
+  $("fwd10").addEventListener("click", () => { seekBy(10); showCtrl(); });
+  pp.addEventListener("click", () => {
+    if (!current || !current.video) return;
+    if (current.media.paused) { current.userPaused = false; current.media.play().catch(() => {}); }
+    else { current.userPaused = true; current.media.pause(); }
+    showCtrl();
+  });
+  ["pointerdown", "pointermove", "pointerup"].forEach(t => ctrl.addEventListener(t, (e) => e.stopPropagation()));
+
+  // ---------- Bluetooth headphones: play the sound earlier by their delay ----------
+  // The video itself is muted; a separate sound player runs ahead of the picture by the set delay and is kept in step.
+  const audioOffset = () => Number($("aoff").value) / 1000;
+  function stopSeparateAudio(m) {
+    if (!m) return;
+    if (m.audTimer) clearInterval(m.audTimer); m.audTimer = null;
+    if (m.aud) { try { m.aud.pause(); m.aud.removeAttribute("src"); m.aud.load(); } catch (e) {} m.aud = null; }
+  }
+  function startSeparateAudio(m) {
+    stopSeparateAudio(m);
+    if (!m.video || !m.url || !$("sound").checked || audioOffset() <= 0) return false;
+    const a = new Audio(); a.preload = "auto"; a.src = m.url; m.aud = a;
+    const v = m.media, sig = { signal: m.ac.signal };
+    let jumping = false, fadeT = null;
+    const fadeIn = () => {                                    // soft start, no click
+      clearInterval(fadeT); let k = 0; a.volume = 0;
+      fadeT = setInterval(() => { k++; a.volume = Math.min(1, k / 8); if (k >= 8) clearInterval(fadeT); }, 25);
+    };
+    const target = () => v.currentTime + audioOffset();
+    const canPlay = () => !v.paused && !v.ended && !v.seeking && !(a.duration && target() >= a.duration);
+    const jumpTo = () => {                                    // stop the sound FIRST, then jump, then fade back in
+      jumping = true; clearInterval(fadeT); a.pause(); a.volume = 0; a.playbackRate = 1;
+      const go = () => { if (!jumping) return; jumping = false; if (m.aud && canPlay()) a.play().then(fadeIn, () => {}); };
+      if (Math.abs(a.currentTime - target()) < 0.02) { go(); return; }
+      a.addEventListener("seeked", go, { once: true });
+      try { a.currentTime = target(); } catch (e) { go(); }
+      setTimeout(go, 1500);                                   // safety net
+    };
+    const sync = (hard) => {
+      if (!m.aud || jumping || a.seeking) return;
+      if (!canPlay()) { if (!a.paused) a.pause(); return; }
+      const drift = a.currentTime - target();                 // > 0: sound too early, < 0: too late
+      if (a.paused || Math.abs(drift) > (hard ? 0.05 : 0.3)) { jumpTo(); return; }
+      a.playbackRate = Math.abs(drift) < 0.015 ? 1 : Math.max(0.9, Math.min(1.1, 1 - drift * 0.8));   // fine-tune smoothly
+    };
+    v.addEventListener("seeking", () => { clearInterval(fadeT); a.pause(); }, sig);   // video jumps: silence at once
+    ["seeked", "playing"].forEach(t => v.addEventListener(t, () => sync(true), sig));
+    v.addEventListener("pause", () => { clearInterval(fadeT); a.pause(); }, sig);
+    a.addEventListener("loadedmetadata", () => sync(true), { once: true });
+    m.audTimer = setInterval(() => sync(false), 250);
+    m.ac.signal.addEventListener("abort", () => { clearInterval(fadeT); stopSeparateAudio(m); });
+    return true;
+  }
+  function applyAudioOffset() {                              // the delay was changed while a video plays
+    if (!current || !current.video) return;
+    if (audioOffset() > 0 && !current.aud && $("sound").checked) { if (startSeparateAudio(current)) { current.media.muted = true; current.media.volume = 0; } }
+    else if (audioOffset() <= 0 && current.aud) { stopSeparateAudio(current); current.media.volume = 1; current.media.muted = !$("sound").checked; }
+  }
+  $("aoff").addEventListener("input", applyAudioOffset);
+
+  function show(m, loopAlone) {
+    useMedia(m);
+    if (xrMode) buildXR();
+    else {
+      buildScenes();
+      if (!m.video || !ctrl.classList.contains("show")) ctrl.classList.remove("show"); else updateCtrl(true);
+    }
+    if (m.video) {
+      m.media.loop = loopAlone; m.media.currentTime = 0;
+      const separate = startSeparateAudio(m);                  // Bluetooth delay set: sound comes from its own player
+      m.media.muted = separate || !$("sound").checked;
+      m.media.volume = separate ? 0 : 1;                       // double safety: the video's own sound stays silent
+      m.media.play().catch(() => {                             // sound not allowed here -> play silently, tap turns sound on
+        m.media.muted = true; m.media.play().catch(() => {});
+        if ($("sound").checked) setTimeout(() => hint(hintEl.textContent.replace("tap = re-center", "tap = sound on")), 50);
+      });
+      const lim = Number($("vidlen").value);
+      if (loopAlone && lim > 0) m.media.addEventListener("timeupdate", () => { if (m.media.currentTime >= lim) m.media.currentTime = 0; }, { signal: m.ac.signal });
+    }
+  }
+  async function play(items) {
+    const token = ++playToken, n = items.length;
+    let i = 0, fails = 0, cur = null;
+    const load = (k) => loadMedia(items[k]).catch(e => ({ error: e, name: items[k].name }));
+    hint("Loading " + items[0].name + "…");
+    let next = load(0);
+    while (token === playToken) {
+      const m = await next;
+      if (token !== playToken) { release(m); break; }
+      if (m.error) {                                          // skip files that can't be shown
+        fails++;
+        hint(`${m.name}: ${m.error.message}`);
+        if (fails >= n) { hint("None of the ticked files could be shown."); break; }
+        i = (i + 1) % n; next = load(i); continue;
+      }
+      fails = 0;
+      release(cur); cur = current = m;
+      show(m, n === 1);
+      hint(n > 1 ? `${i + 1} / ${n} · tap = re-center` : "tap = re-center");
+      playPos = n > 1 ? `${i + 1} / ${n}` : ""; menuDirty = true;
+      if (n > 1) next = load((i + 1) % n);                    // preload the next item while this one shows
+      await waitDone(m, n === 1, token);
+      const j = jumpReq; jumpReq = 0;
+      if (j === -1 || (j === 1 && n === 1)) {                 // previous item (or reload the only one)
+        if (next) next.then(r => { if (r !== current) release(r); });
+        i = (i - (j === -1 ? 1 : 0) + n) % n; next = load(i);
+      } else i = (i + 1) % n;
+    }
+    if (token !== playToken) next && next.then(release);
+  }
+
+  function playlistItems() {
+    const ticked = checkedNames().map(n => ({ url: "files/" + encodeURIComponent(n), name: n, video: VID.test(n) }));
+    const items = [...ticked, ...localChecked()];
+    if (!items.length) { setStatus("Tick at least one file first.", "err"); return null; }
+    return items;
+  }
+  startBtn.addEventListener("click", async () => {
+    unlockPlayers();
+    const items = playlistItems(); if (!items) return;
+    // some phones: motion permission must be requested inside this tap
+    if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
+      try {
+        const r = await DeviceOrientationEvent.requestPermission();
+        if (r !== "granted") { setStatus("Motion access was denied. Without it you can only look around by dragging. Reload the page to be asked again.", "err"); }
+      } catch (e) { setStatus("Motion access could not be requested: " + e.message, "err"); }
+    }
+    window.addEventListener("deviceorientation", onOrientation);
+    try { if ("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen"); } catch (e) {}
+    try { await document.documentElement.requestFullscreen?.(); } catch (e) {}
+
+    if (!renderer) {
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.outputEncoding = THREE.sRGBEncoding;
+      renderer.setPixelRatio(window.devicePixelRatio || 1);   // full phone resolution
+      $("vr").prepend(renderer.domElement);
+      camL = new THREE.PerspectiveCamera(90, 1, 0.1, 200); camR = new THREE.PerspectiveCamera(90, 1, 0.1, 200);
+      window.addEventListener("resize", resize);
+      window.addEventListener("orientationchange", () => setTimeout(resize, 300));
+    }
+    disposeScene(sceneL); disposeScene(sceneR);
+    sceneL = new THREE.Scene(); sceneR = new THREE.Scene();       // black until the first item has loaded
+    $("setup").style.display = "none"; $("vr").style.display = "block";
+    running = true; resize();
+    setTimeout(recenter, 400);
+    requestAnimationFrame(frame);
+    play(items);
+  });
+
+  // tap = re-center (and start video if it was blocked); drag = look around without motion sensor
+  let down = null;
+  $("vr").addEventListener("pointerdown", (e) => { if (e.target.id === "exit") return; down = { x: e.clientX, y: e.clientY, lon: dragLon, lat: dragLat, moved: false }; });
+  $("vr").addEventListener("pointermove", (e) => {
+    if (!down || haveOrientation) return;
+    const dx = e.clientX - down.x, dy = e.clientY - down.y;
+    if (Math.abs(dx) + Math.abs(dy) > 6) down.moved = true;
+    dragLon = down.lon + dx * 0.005; dragLat = Math.max(-1.5, Math.min(1.5, down.lat + dy * 0.005));
+  });
+  $("vr").addEventListener("pointerup", () => {
+    if (down && !down.moved) {
+      recenter();
+      if (current && current.video) {
+        if ($("sound").checked && current.media.muted && !current.aud) current.media.muted = false;
+        if (current.media.paused && !current.userPaused) current.media.play().catch(() => {});
+        showCtrl();
+      }
+    }
+    down = null;
+  });
+
+  function exitVR() {
+    running = false; playToken++;
+    ctrl.classList.remove("show"); seeking = false;
+    if (stopWait) stopWait();
+    release(current); current = null;
+    disposeScene(sceneL); disposeScene(sceneR); sceneL = sceneR = null;
+    $("vr").style.display = "none"; $("setup").style.display = "flex";
+    selectionChanged();
+    try { wakeLock && wakeLock.release(); } catch (e) {}
+    try { document.fullscreenElement && document.exitFullscreen(); } catch (e) {}
+  }
+  $("exit").addEventListener("click", exitVR);
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});   // works offline after the first visit
+
+  // ======================= Meta Quest (WebXR) =======================
+  // Follows Meta's Quest Browser guidance: videos as WebXR media layers (drawn by the headset's compositor
+  // directly - no double resampling), pictures rendered by WebXR with fixed foveation off (full sharpness to
+  // the edge) and a 1.5x framebuffer. Left eye sees three.js layer 1, right eye layer 2.
+  let xrRenderer = null, xrSession = null, xrRef = null, xrScene = null, xrCam = null, xrMode = false;
+  let xrMediaBinding = null, xrMediaLayer = null, xrContent = null, xrLast = 0;
+  const XR_RECT_DIST = 50, XR_FLAT_DIST = 4, XR_SPHERE_R = 100;   // m; far plane = background near "infinity"
+  const xrSizeEl = $("xrsize");
+  const xrSize = () => Number(xrSizeEl.value);
+  const showXRSize = () => { $("xrsizev").textContent = xrSize().toFixed(2); };
+  try { const v = localStorage.getItem("vrv_xrsize"); if (v !== null) xrSizeEl.value = v; } catch (e) {}
+  try { const v = localStorage.getItem("vrv_xrnative"); if (v !== null) $("xrnative").checked = v === "1"; } catch (e) {}
+  const saveXRSize = () => { try { localStorage.setItem("vrv_xrsize", xrSizeEl.value); } catch (e) {} };
+  xrSizeEl.addEventListener("input", () => { showXRSize(); saveXRSize(); });
+  $("xrnative").addEventListener("change", () => { try { localStorage.setItem("vrv_xrnative", $("xrnative").checked ? "1" : "0"); } catch (e) {} });
+  showXRSize();
+
+  const isSbs = (f) => f === "360sbs" || f === "flatsbs" || f === "flathsbs" || f === "180sbs" || f === "rectsbs" || isFisheye(f);
+  const eyeAspectOf = (f) => eyeAspectFor(f, mediaW, mediaH);
+  function quadSize(fmt, ea) {                                 // size in metres at its distance
+    if (fmt === "rectsbs" || fmt === "rect") {                 // exactly as wide as the picture's field of view (x size)
+      const half = XR_RECT_DIST * Math.tan(fileFov() * Math.PI / 360) * xrSize();
+      return { d: XR_RECT_DIST, w: ea >= 1 ? 2 * half : 2 * half * ea, h: ea >= 1 ? 2 * half / ea : 2 * half };
+    }
+    const h = 2.4 * xrSize();                                  // flat: a 2.4 m high screen 4 m away (x size)
+    return { d: XR_FLAT_DIST, w: h * ea, h };
+  }
+  function removeMediaLayer() {
+    if (!xrMediaLayer) return;
+    try { xrSession.updateRenderState({ layers: [xrRenderer.xr.getBaseLayer()] }); } catch (e) {}
+    try { xrMediaLayer.destroy && xrMediaLayer.destroy(); } catch (e) {}
+    xrMediaLayer = null;
+  }
+  function buildXR() {
+    if (xrContent) { disposeScene(xrContent); xrScene.remove(xrContent); xrContent = null; }
+    removeMediaLayer();
+    const fmt = currentFormat(), swap = $("swap").checked, ea = eyeAspectOf(fmt);
+    const sphere = fmt.startsWith("360") || fmt.startsWith("180");
+    const layout = isTB(fmt) ? "stereo-top-bottom" : isSbs(fmt) ? "stereo-left-right" : "mono";
+    if (isVideo && xrMediaBinding && $("xrnative").checked && !isFisheye(fmt)) {   // fisheye: no native layer type, drawn below
+      try {
+        let layer;
+        if (sphere) {
+          layer = xrMediaBinding.createEquirectLayer(media, { space: xrRef, layout, invertStereo: swap, radius: 0,
+            centralHorizontalAngle: fmt.startsWith("360") ? 2 * Math.PI : Math.PI,
+            upperVerticalAngle: Math.PI / 2, lowerVerticalAngle: -Math.PI / 2 });
+        } else {
+          const q = quadSize(fmt, ea);
+          layer = xrMediaBinding.createQuadLayer(media, { space: xrRef, layout, invertStereo: swap, width: q.w, height: q.h,
+            transform: new XRRigidTransform({ x: 0, y: 0, z: -q.d }) });
+        }
+        xrMediaLayer = layer;
+        xrSession.updateRenderState({ layers: [layer, xrRenderer.xr.getBaseLayer()] });   // video below, menu layer on top
+        return;
+      } catch (e) { removeMediaLayer(); }                       // fall back to normal WebXR drawing below
+    }
+    const src = fitTexture(media, mediaW, mediaH);
+    const makeTex = () => {
+      const t = isVideo ? new THREE.VideoTexture(media) : new THREE.Texture(src);
+      t.encoding = THREE.sRGBEncoding; t.magFilter = THREE.LinearFilter;
+      if (isVideo) { t.minFilter = THREE.LinearFilter; t.generateMipmaps = false; }
+      else { t.minFilter = THREE.LinearMipmapLinearFilter; t.generateMipmaps = true; }
+      t.anisotropy = xrRenderer.capabilities.getMaxAnisotropy();
+      t.needsUpdate = true;
+      return t;
+    };
+    const setHalf = (t, eye) => {                              // flipY on: v=1 is the top of the file
+      if (isTB(fmt)) { t.repeat.set(1, 0.5); t.offset.set(0, eye === "L" ? 0.5 : 0); }
+      else if (isSbs(fmt)) { t.repeat.set(0.5, 1); t.offset.set(eye === "L" ? 0 : 0.5, 0); }
+    };
+    const makeMesh = (tex) => {
+      let m;
+      if (isFisheye(fmt)) {
+        m = new THREE.Mesh(fisheyeGeometry(XR_SPHERE_R, Number(fmt.slice(2))), new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }));
+      } else if (fmt === "180sbs" || fmt === "180tb" || fmt === "180mono") {
+        const geo = new THREE.SphereGeometry(XR_SPHERE_R, 96, 96, Math.PI / 2, Math.PI, 0, Math.PI); geo.scale(-1, 1, 1);
+        m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex })); m.rotation.y = -Math.PI / 2;
+      } else if (sphere) {
+        const geo = new THREE.SphereGeometry(XR_SPHERE_R, 128, 64); geo.scale(-1, 1, 1);
+        m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex })); m.rotation.y = -Math.PI / 2;
+      } else {
+        const q = quadSize(fmt, ea);
+        m = new THREE.Mesh(new THREE.PlaneGeometry(q.w, q.h), new THREE.MeshBasicMaterial({ map: tex }));
+        m.position.set(0, 0, -q.d); m.userData = { w: q.w, h: q.h };
+      }
+      return m;
+    };
+    xrContent = new THREE.Group();
+    const tL = makeTex();
+    if (layout === "mono") xrContent.add(makeMesh(tL));        // both eyes see layer 0
+    else {
+      const tR = isVideo ? makeTex() : tL.clone(); tR.needsUpdate = true;
+      setHalf(tL, swap ? "R" : "L"); setHalf(tR, swap ? "L" : "R");
+      const mL = makeMesh(tL), mR = makeMesh(tR);
+      mL.layers.set(1); mR.layers.set(2);                      // three.js: left eye camera sees layer 1, right eye layer 2
+      xrContent.add(mL, mR);
+    }
+    xrScene.add(xrContent);
+  }
+  function applyXRSize() {
+    if (!xrMode || !media) return;
+    const fmt = currentFormat();
+    if (fmt.startsWith("360") || fmt.startsWith("180")) return;
+    const q = quadSize(fmt, eyeAspectOf(fmt));
+    if (xrMediaLayer && "width" in xrMediaLayer) { xrMediaLayer.width = q.w; xrMediaLayer.height = q.h; }
+    if (xrContent) xrContent.children.forEach(m => { if (m.userData.w) m.scale.set(q.w / m.userData.w, q.h / m.userData.h, 1); });
+  }
+  function togglePlay() {
+    if (!current || !current.video) return;
+    if (current.media.paused) { current.userPaused = false; current.media.play().catch(() => {}); }
+    else { current.userPaused = true; current.media.pause(); }
+  }
+  function seekBy(sec) {
+    if (!current || !current.video) return;
+    const d = isFinite(current.media.duration) ? current.media.duration : 0;
+    current.media.currentTime = Math.max(0, Math.min(d ? d - 0.05 : 0, current.media.currentTime + sec));
+  }
+  function jump(dir) { jumpReq = dir; if (stopWait) stopWait(); }
+  const padState = new Map();
+  function xrInput(dt) {
+    for (const src of xrSession.inputSources) {
+      const gp = src.gamepad; if (!gp) continue;
+      let st = padState.get(src); if (!st) { st = {}; padState.set(src, st); }
+      const ax = gp.axes.length >= 4 ? gp.axes[2] : 0, ay = gp.axes.length >= 4 ? gp.axes[3] : 0;
+      const dir = ax > 0.7 ? 1 : ax < -0.7 ? -1 : 0;          // thumbstick left/right: previous/next item
+      const grip = !!(gp.buttons[1] && gp.buttons[1].pressed);
+      if (dir && !st.dir) {
+        if (grip) {                                            // grip held: Bluetooth delay -/+ 20 ms
+          const el = $("aoff"); el.value = Math.max(0, Math.min(500, Number(el.value) + dir * 20));
+          showVal(); try { localStorage.setItem("vrv_aoff", el.value); } catch (e) {} applyAudioOffset();
+        } else jump(dir);
+      }
+      st.dir = Math.abs(ax) > 0.3 ? (dir || st.dir) : 0;
+      if (Math.abs(ay) > 0.2 && Math.abs(ay) > Math.abs(ax)) {  // thumbstick up/down: size (up = bigger)
+        xrSizeEl.value = Math.min(6, Math.max(0.3, xrSize() * Math.exp(-ay * dt * 0.8)));
+        showXRSize(); applyXRSize(); st.sizing = true;
+      } else if (st.sizing) { st.sizing = false; saveXRSize(); }
+      const b4 = !!(gp.buttons[4] && gp.buttons[4].pressed), b5 = !!(gp.buttons[5] && gp.buttons[5].pressed);
+      if (b4 && !st.b4) seekBy(-10);                           // A / X: 10 s back
+      if (b5 && !st.b5) seekBy(10);                            // B / Y: 10 s forward
+      st.b4 = b4; st.b5 = b5;
+      const b3 = !!(gp.buttons[3] && gp.buttons[3].pressed);   // thumbstick press: menu open/close
+      if (b3 && !st.b3) toggleMenu();
+      st.b3 = b3;
+    }
+  }
+  // ---------- menu inside VR: point with the controller (or hand) and pull the trigger / pinch ----------
+  const MW = 1.0, MH = 0.6, CW = 1600, CH = 960;              // panel size in metres / canvas pixels
+  let menuMesh = null, menuCtx = null, menuTex = null, menuOpen = false, toggleMesh = null, toggleTex = null, toggleCtx = null;
+  let controllers = [], hover = [null, null], menuDirty = true, lastMenuDraw = 0;
+  const raycaster = new THREE.Raycaster(), tmpM = new THREE.Matrix4();
+  const C = { bg: "rgba(16,22,42,0.94)", card: "#1b2442", line: "#2a3558", fg: "#eef2ff", muted: "#9ba7c9", accent: "#8ea2ff", accent2: "#4fd8c6", hover: "#2c3a72" };
+  function menuButtons() {
+    const v = current && current.video, playing = v && !current.media.paused;
+    const sz = xrSize().toFixed(2), d = $("aoff").value, snd = $("sound").checked, sw = $("swap").checked;
+    const W = 290, H = 150, G = 17, X = (i) => 25 + i * (W + G);
+    const row = (y, items) => items.map((it, i) => it && { x: X(i), y, w: it.wide ? 2 * W + G : W, h: H, ...it });
+    const curFmt = () => media ? currentFormat() : "";
+    return [
+      ...row(230, [{ t: "⏮", s: "Zurück", a: "prev" }, { t: "−10 s", a: "back", off: !v }, { t: playing ? "❚❚" : "▶", s: playing ? "Pause" : "Abspielen", a: "play", off: !v, hl: true },
+                   { t: "+10 s", a: "fwd", off: !v }, { t: "⏭", s: "Weiter", a: "next" }]),
+      ...row(400, [{ t: "Größe −", a: "size-" }, { t: sz + "×", s: "echt = 1.00", a: "size1" }, { t: "Größe +", a: "size+" },
+                   { t: snd ? "Ton an" : "Ton aus", a: "sound", on: snd }, { t: "Augen", s: sw ? "getauscht" : "normal", a: "swap", on: sw }]),
+      ...row(740, [{ t: "◀", s: "Format", a: "fmt-" }, { t: LABEL[curFmt()] || "", s: fileFormats[fileName] || $("format").value !== "auto" ? "gewählt · tippen = auto" : "automatisch erkannt", a: "fmt0", wide: true },
+                   null, { t: "▶", s: "Format", a: "fmt+" }]),
+      ...row(570, [{ t: "BT −10", a: "bt-" }, { t: d + " ms", s: "Bluetooth", a: "bt0" }, { t: "BT +10", a: "bt+" },
+                   { t: "Schließen", a: "close" }, { t: "VR beenden", a: "exit", danger: true }]),
+    ].filter(Boolean);
+  }
+  function rr(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+  const FORMATS = ["180sbs", "180tb", "180mono", "fe180", "fe190", "fe200", "fe220", "360tb", "360sbs", "360mono", "rectsbs", "rect", "flathsbs", "flatsbs", "flathtb", "flattb", "flatmono"];
+  function setFileFormat(dir) {                                // ◀ ▶ in the menu: this file only, remembered
+    if (!media) return;
+    if ($("format").value !== "auto") { $("format").value = "auto"; $("format").dispatchEvent(new Event("change")); }
+    if (dir === 0) delete fileFormats[fileName];
+    else { const i = FORMATS.indexOf(currentFormat()); fileFormats[fileName] = FORMATS[(i + dir + FORMATS.length) % FORMATS.length]; }
+    try { localStorage.setItem("vrv_fmt", JSON.stringify(fileFormats)); } catch (e) {}
+    buildXR();
+  }
+  function drawMenu() {
+    const ctx = menuCtx; ctx.clearRect(0, 0, CW, CH);
+    rr(ctx, 4, 4, CW - 8, CH - 8, 48); ctx.fillStyle = C.bg; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = C.line; ctx.stroke();
+    const name = current ? current.name.replace(/_0*(\d+)_?(?=\.\w+$)/, " · $1").replace(/\.\w+$/, "") : "";
+    ctx.fillStyle = C.fg; ctx.font = "700 56px Inter, Roboto, sans-serif"; ctx.textBaseline = "middle";
+    let nm = name; while (ctx.measureText(nm).width > 1150 && nm.length > 4) nm = nm.slice(0, -2);
+    ctx.fillText(nm === name ? nm : nm + "…", 50, 80);
+    ctx.textAlign = "right"; ctx.fillStyle = C.accent2; ctx.fillText(playPos, CW - 50, 80); ctx.textAlign = "left";
+    ctx.font = "500 40px Inter, Roboto, sans-serif"; ctx.fillStyle = C.muted;
+    let info = current ? (current.video ? `${fmtT(current.media.currentTime)} / ${fmtT(vidEnd(current))}` + (current.media.paused ? " · pausiert" : "") : "Bild · 5 s") : "lädt…";
+    ctx.fillText(info, 50, 165);
+    if (current && current.video) {                            // progress line (display only)
+      const f = Math.min(1, current.media.currentTime / (vidEnd(current) || 1));
+      rr(ctx, 600, 152, 950, 26, 13); ctx.fillStyle = "#26305a"; ctx.fill();
+      rr(ctx, 600, 152, Math.max(26, 950 * f), 26, 13); ctx.fillStyle = C.accent2; ctx.fill();
+    }
+    const hv = new Set(hover.filter(h => h && h.btn).map(h => h.btn.a));
+    for (const b of menuButtons()) {
+      rr(ctx, b.x, b.y, b.w, b.h, 30);
+      ctx.fillStyle = b.off ? "#141a30" : hv.has(b.a) ? C.hover : b.hl ? "#20345a" : b.on ? "#183f45" : C.card; ctx.fill();
+      ctx.lineWidth = hv.has(b.a) ? 6 : 3; ctx.strokeStyle = hv.has(b.a) ? C.accent : b.danger ? "#7a3a44" : C.line; ctx.stroke();
+      ctx.fillStyle = b.off ? "#56607e" : b.danger ? "#ff9b93" : C.fg; ctx.textAlign = "center";
+      let fs = b.s ? 52 : 50; do { ctx.font = `700 ${fs}px Inter, Roboto, sans-serif`; fs -= 2; } while (ctx.measureText(b.t).width > b.w - 36 && fs > 24);
+      ctx.fillText(b.t, b.x + b.w / 2, b.y + (b.s ? 58 : b.h / 2));
+      if (b.s) { ctx.font = "500 32px Inter, Roboto, sans-serif"; ctx.fillStyle = C.muted; ctx.fillText(b.s, b.x + b.w / 2, b.y + 110); }
+      ctx.textAlign = "left";
+    }
+    menuTex.needsUpdate = true; menuDirty = false;
+  }
+  let playPos = "";
+  function drawToggle(hot) {
+    const c = toggleCtx; c.clearRect(0, 0, 256, 256);
+    c.beginPath(); c.arc(128, 128, 118, 0, Math.PI * 2); c.fillStyle = hot ? "rgba(44,58,114,0.95)" : "rgba(16,22,42,0.65)"; c.fill();
+    c.lineWidth = hot ? 10 : 6; c.strokeStyle = hot ? C.accent : "rgba(142,162,255,0.6)"; c.stroke();
+    c.fillStyle = C.fg; [96, 128, 160].forEach(y => { rr(c, 72, y - 8, 112, 16, 8); c.fill(); });
+    toggleTex.needsUpdate = true;
+  }
+  function headPose() {                                         // where the user looks (yaw only) and head position
+    const cam = xrRenderer.xr.getCamera(); const pos = new THREE.Vector3(), q = new THREE.Quaternion();
+    cam.matrixWorld.decompose(pos, q, new THREE.Vector3());
+    const yaw = new THREE.Euler().setFromQuaternion(q, "YXZ").y;
+    return { pos, yaw };
+  }
+  function placeInFront(obj, dist, dy) {
+    const { pos, yaw } = headPose();
+    obj.position.set(pos.x - Math.sin(yaw) * dist, pos.y + dy, pos.z - Math.cos(yaw) * dist);
+    obj.rotation.set(0, yaw, 0);
+  }
+  function toggleMenu(open) {
+    menuOpen = open === undefined ? !menuOpen : open;
+    if (menuOpen) { placeInFront(menuMesh, 1.1, -0.18); menuDirty = true; }
+    menuMesh.visible = menuOpen; toggleMesh.visible = !menuOpen;
+    controllers.forEach(c => { if (c.userData.ray) c.userData.ray.scale.z = menuOpen ? 3 : 0.35; });
+  }
+  function applySound() {
+    try { localStorage.setItem("vrv_sound", $("sound").checked ? "1" : "0"); } catch (e) {}
+    if (!current || !current.video) return;
+    if (!$("sound").checked) { stopSeparateAudio(current); current.media.muted = true; return; }
+    if (audioOffset() > 0) { if (!current.aud && startSeparateAudio(current)) { current.media.muted = true; current.media.volume = 0; } }
+    else { current.media.volume = 1; current.media.muted = false; }
+  }
+  function menuAction(a) {
+    const setAoff = (v) => { const el = $("aoff"); el.value = Math.max(0, Math.min(500, v)); showVal(); try { localStorage.setItem("vrv_aoff", el.value); } catch (e) {} applyAudioOffset(); };
+    const setSize = (v) => { xrSizeEl.value = Math.min(6, Math.max(0.3, v)).toFixed(2); showXRSize(); saveXRSize(); applyXRSize(); };
+    switch (a) {
+      case "prev": jump(-1); break;            case "next": jump(1); break;
+      case "back": seekBy(-10); break;         case "fwd": seekBy(10); break;
+      case "play": togglePlay(); break;
+      case "size-": setSize(xrSize() / 1.1); break;  case "size+": setSize(xrSize() * 1.1); break;  case "size1": setSize(1); break;
+      case "sound": $("sound").checked = !$("sound").checked; applySound(); break;
+      case "swap": $("swap").checked = !$("swap").checked; if (media) buildXR(); break;
+      case "bt-": setAoff(Number($("aoff").value) - 10); break;  case "bt+": setAoff(Number($("aoff").value) + 10); break;
+      case "bt0": setAoff(Number($("aoff").value) > 0 ? 0 : 250); break;
+      case "close": toggleMenu(false); break;
+      case "fmt-": setFileFormat(-1); break;   case "fmt+": setFileFormat(1); break;   case "fmt0": setFileFormat(0); break;
+      case "exit": try { xrSession.end(); } catch (e) {} break;
+    }
+    menuDirty = true;
+  }
+  function setupXRUI() {
+    const mc = document.createElement("canvas"); mc.width = CW; mc.height = CH; menuCtx = mc.getContext("2d");
+    menuTex = new THREE.CanvasTexture(mc); menuTex.encoding = THREE.sRGBEncoding; menuTex.anisotropy = xrRenderer.capabilities.getMaxAnisotropy();
+    menuMesh = new THREE.Mesh(new THREE.PlaneGeometry(MW, MH), new THREE.MeshBasicMaterial({ map: menuTex, transparent: true, depthTest: false }));
+    menuMesh.renderOrder = 10; menuMesh.visible = false; xrScene.add(menuMesh);
+    const tc = document.createElement("canvas"); tc.width = tc.height = 256; toggleCtx = tc.getContext("2d");
+    toggleTex = new THREE.CanvasTexture(tc); toggleTex.encoding = THREE.sRGBEncoding;
+    toggleMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 0.12), new THREE.MeshBasicMaterial({ map: toggleTex, transparent: true, depthTest: false }));
+    toggleMesh.renderOrder = 10; toggleMesh.position.set(0, -0.5, -1.0); xrScene.add(toggleMesh); drawToggle(false);
+    controllers = [0, 1].map(i => {
+      const c = xrRenderer.xr.getController(i);
+      const ray = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]),
+                                 new THREE.LineBasicMaterial({ color: 0x8ea2ff, transparent: true, opacity: 0.7, depthTest: false }));
+      ray.renderOrder = 11; ray.scale.z = 0.35; c.add(ray); c.userData.ray = ray; c.userData.i = i;
+      c.addEventListener("select", () => {                    // trigger or pinch
+        const h = hover[i];
+        if (h && h.toggle) toggleMenu(true);
+        else if (h && h.btn) { if (!h.btn.off) menuAction(h.btn.a); }
+        else if (!menuOpen) togglePlay();
+      });
+      xrScene.add(c);
+      return c;
+    });
+    menuOpen = false; hover = [null, null]; menuDirty = true;
+  }
+  function teardownXRUI() {
+    controllers.forEach(c => { if (c.parent) c.parent.remove(c); });
+    controllers = []; hover = [null, null]; menuOpen = false;
+    [menuTex, toggleTex].forEach(t => t && t.dispose()); menuMesh = toggleMesh = null;
+  }
+  function updateXRUI(t) {
+    if (!menuMesh) return;
+    xrScene.updateMatrixWorld();                               // current positions of menu, ☰ and controllers for the ray test
+    const targets = menuOpen ? [menuMesh] : [toggleMesh];
+    let toggleHot = false;
+    controllers.forEach((c, i) => {
+      let h = null;
+      if (c.visible !== false) {
+        tmpM.identity().extractRotation(c.matrixWorld);
+        raycaster.ray.origin.setFromMatrixPosition(c.matrixWorld);
+        raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tmpM);
+        const hit = raycaster.intersectObjects(targets, false)[0];
+        if (hit && hit.object === toggleMesh) { h = { toggle: true }; toggleHot = true; }
+        else if (hit && hit.uv) {
+          const px = hit.uv.x * CW, py = (1 - hit.uv.y) * CH;
+          const btn = menuButtons().find(b => px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + b.h);
+          h = { btn: btn || null };
+        }
+        if (c.userData.ray) c.userData.ray.scale.z = hit ? hit.distance : (menuOpen ? 3 : 0.35);
+      }
+      const key = (x) => x ? (x.toggle ? "T" : x.btn ? x.btn.a : "-") : "";
+      if (key(h) !== key(hover[i])) menuDirty = true;
+      hover[i] = h;
+    });
+    if (toggleMesh.visible && toggleMesh.userData.hot !== toggleHot) { toggleMesh.userData.hot = toggleHot; drawToggle(toggleHot); }
+    if (menuOpen && (menuDirty || t - lastMenuDraw > 250)) { lastMenuDraw = t; drawMenu(); }
+  }
+  function xrFrame(t) {
+    const dt = xrLast ? Math.min(0.1, (t - xrLast) / 1000) : 0; xrLast = t;
+    if (xrSession) { xrInput(dt); updateXRUI(t); }
+    xrRenderer.render(xrScene, xrCam);
+  }
+  function endXR() {
+    xrMode = false; playToken++; jumpReq = 0;
+    if (stopWait) stopWait();
+    release(current); current = null;
+    xrMediaLayer = null; teardownXRUI(); disposeScene(xrScene); xrScene = null; xrContent = null;
+    if (xrRenderer) xrRenderer.setAnimationLoop(null);
+    xrSession = null; xrMediaBinding = null; padState.clear();
+    selectionChanged();
+  }
+  async function startXR() {
+    unlockPlayers();                                           // inside the tap: allows video with sound
+    const items = playlistItems(); if (!items) return;
+    let session;
+    try { session = await navigator.xr.requestSession("immersive-vr", { optionalFeatures: ["layers", "hand-tracking"] }); }
+    catch (e) { setStatus("VR could not be started: " + e.message, "err"); return; }
+    try {
+      if (!xrRenderer) {
+        xrRenderer = new THREE.WebGLRenderer({ antialias: true });
+        xrRenderer.outputEncoding = THREE.sRGBEncoding;
+        xrRenderer.setClearColor(0x000000, 0);                 // transparent where nothing is drawn (video layer shows through)
+        xrRenderer.xr.enabled = true;
+        xrRenderer.xr.setReferenceSpaceType("local");          // origin = your head when VR starts
+        xrCam = new THREE.PerspectiveCamera(70, 1, 0.05, 1000);
+      }
+      xrRenderer.xr.setFramebufferScaleFactor(1.5);            // sharper than the default resolution
+      await xrRenderer.xr.setSession(session);
+      xrRenderer.xr.setFoveation(0);                           // no blurrier edges (fixed foveation off)
+      xrSession = session; xrRef = xrRenderer.xr.getReferenceSpace();
+      xrMediaBinding = (typeof XRMediaBinding !== "undefined" && session.renderState.layers !== undefined) ? new XRMediaBinding(session) : null;
+      try {
+        const rates = session.supportedFrameRates ? [...session.supportedFrameRates] : [];
+        if (session.updateTargetFrameRate && rates.includes(90)) session.updateTargetFrameRate(90).catch(() => {});
+      } catch (e) {}
+      session.addEventListener("end", endXR);
+      xrScene = new THREE.Scene(); xrMode = true; xrLast = 0;
+      setupXRUI();
+      xrRenderer.setAnimationLoop(xrFrame);
+      play(items);
+    } catch (e) {
+      setStatus("VR could not be started: " + e.message, "err");
+      try { session.end(); } catch (e2) {}
+    }
+  }
+  let xrSupported = false;
+  function noXR() {                                            // no headset: the big button starts the phone viewer
+    $("startxr").textContent = "▶ Ansehen (Handy-Viewer)"; $("phonebox").open = true;
+  }
+  if (!navigator.xr || !navigator.xr.isSessionSupported) noXR();
+  $("startxr").addEventListener("click", () => { if (xrSupported) startXR(); else startBtn.click(); });
+  if (navigator.xr && navigator.xr.isSessionSupported) {
+    navigator.xr.isSessionSupported("immersive-vr").then(ok => { xrSupported = !!ok; if (!ok) noXR(); }).catch(noXR);
+  }
+  window.addEventListener("keydown", (e) => { if (e.key === "Escape") exitVR(); });
+})();
+</script>
+</body>
+</html>
