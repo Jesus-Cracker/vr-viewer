@@ -974,32 +974,39 @@
   }
   async function play(items) {
     const token = ++playToken, n = items.length;
-    let i = 0, fails = 0, cur = null;
+    let i = 0, fails = 0, cur = null, next = null;
     const load = (k) => items[k].deleted ? Promise.resolve({ error: new Error("gelöscht"), name: items[k].name })
                                          : loadMedia(items[k]).catch(e => ({ error: e, name: items[k].name }));
+    const freeVideoFor = (k) => {                              // before a video loads, the playing video is released (8K: one at a time)
+      if (items[k].video && cur && cur.video) { release(cur); cur = null; current = null; }
+    };
     hint("Loading " + items[0].name + "…");
-    let next = load(0);
+    next = load(0);
     while (token === playToken) {
-      const m = await next;
+      const m = await next; next = null;
       if (token !== playToken) { release(m); break; }
       if (m.error) {                                          // skip files that can't be shown
         fails++;
         hint(`${m.name}: ${m.error.message}`);
         if (fails >= n) { hint("Keine der ausgewählten Dateien kann gezeigt werden."); if (xrMode) { try { xrSession.end(); } catch (e) {} } break; }
-        i = (i + 1) % n; next = load(i); continue;
+        i = (i + 1) % n; freeVideoFor(i); next = load(i); continue;
       }
       fails = 0;
       release(cur); cur = current = m;
       show(m, n === 1);
       hint(n > 1 ? `${i + 1} / ${n} · tap = re-center` : "tap = re-center");
       playPos = n > 1 ? `${i + 1} / ${n}` : ""; menuDirty = true;
-      if (n > 1) next = load((i + 1) % n);                    // preload the next item while this one shows
+      const ni = (i + 1) % n;
+      if (n > 1 && !items[ni].video) next = load(ni);         // only pictures are prepared in advance
       await waitDone(m, n === 1, token);
-      const j = jumpReq; jumpReq = 0;
-      if (j === -1 || (j === 1 && n === 1)) {                 // previous item (or reload the only one)
-        if (next) next.then(r => { if (r !== current) release(r); });
-        i = (i - (j === -1 ? 1 : 0) + n) % n; next = load(i);
-      } else i = (i + 1) % n;
+      let steps = jumpReq; jumpReq = 0;
+      if (steps !== 0) {                                       // several quick presses: wait until they stop, then jump once
+        for (;;) { await new Promise(r => setTimeout(r, 300)); if (!jumpReq || token !== playToken) break; steps += jumpReq; jumpReq = 0; }
+      } else steps = 1;
+      const target = (((i + steps) % n) + n) % n;
+      if (next && target !== ni) { const old = next; next = null; old.then(r => { if (r !== current) release(r); }); }
+      if (!next) { freeVideoFor(target); next = load(target); }
+      i = target;
     }
     if (token !== playToken) next && next.then(release);
   }
@@ -1194,7 +1201,7 @@
     const d = isFinite(current.media.duration) ? current.media.duration : 0;
     current.media.currentTime = Math.max(0, Math.min(d ? d - 0.05 : 0, current.media.currentTime + sec));
   }
-  function jump(dir) { jumpReq = dir; if (stopWait) stopWait(); }
+  function jump(dir) { jumpReq += dir; if (stopWait) stopWait(); }
   const padState = new Map();
   function xrInput(dt) {
     for (const src of xrSession.inputSources) {
@@ -1240,6 +1247,7 @@
     const row = (y, items) => items.map((it, i) => it && { x: X(i), y, w: it.wide ? 2 * W + G : W, h: H, ...it });
     const curFmt = () => media ? currentFormat() : "";
     return [
+      { x: CW - 345, y: 22, w: 320, h: 104, t: grab ? "Ablegen" : "✥ Verschieben", s: grab ? "Trigger drücken" : "", a: "move", hl: !!grab },
       ...row(230, [{ t: "⏮", s: "Zurück", a: "prev" }, { t: "−10 s", a: "back", off: !v }, { t: playing ? "❚❚" : "▶", s: playing ? "Pause" : "Abspielen", a: "play", off: !v, hl: true },
                    { t: "+10 s", a: "fwd", off: !v }, { t: "⏭", s: "Weiter", a: "next" }]),
       ...row(400, [{ t: "Größe −", a: "size-" }, { t: sz + "×", s: "echt = 1.00", a: "size1" }, { t: "Größe +", a: "size+" },
@@ -1263,13 +1271,15 @@
     it.deleted = true; jump(1);                                // next item; the deleted one is skipped from now on
     if (dirHandle) listDir();
   }
+  let rebuildT = null;
+  function rebuildSoon() { clearTimeout(rebuildT); rebuildT = setTimeout(() => { try { if (media && xrMode) buildXR(); } catch (e) { recordError("Neuaufbau", e); } }, 350); }
   function setFileFormat(dir) {                                // ◀ ▶ in the menu: this file only, remembered
     if (!media) return;
     if ($("format").value !== "auto") { $("format").value = "auto"; $("format").dispatchEvent(new Event("change")); }
     if (dir === 0) delete fileFormats[fileName];
     else { const i = FORMATS.indexOf(currentFormat()); fileFormats[fileName] = FORMATS[(i + dir + FORMATS.length) % FORMATS.length]; }
     try { localStorage.setItem("vrv_fmt", JSON.stringify(fileFormats)); } catch (e) {}
-    buildXR();
+    rebuildSoon();
   }
   function drawMenu() {
     const ctx = menuCtx; ctx.clearRect(0, 0, CW, CH);
@@ -1278,14 +1288,14 @@
     rr(ctx, CW / 2 - 90, 16, 180, 14, 7); ctx.fillStyle = grab || titleHot ? C.accent2 : "#3a4670"; ctx.fill();   // handle: pull here to move
     const name = current ? current.name.replace(/_0*(\d+)_?(?=\.\w+$)/, " · $1").replace(/\.\w+$/, "") : "";
     ctx.fillStyle = C.fg; ctx.font = "700 56px Inter, Roboto, sans-serif"; ctx.textBaseline = "middle";
-    let nm = name; while (ctx.measureText(nm).width > 1150 && nm.length > 4) nm = nm.slice(0, -2);
+    let nm = name; while (ctx.measureText(nm).width > 900 && nm.length > 4) nm = nm.slice(0, -2);
     ctx.fillText(nm === name ? nm : nm + "…", 50, 80);
-    ctx.textAlign = "right"; ctx.fillStyle = C.accent2; ctx.fillText(playPos, CW - 50, 80); ctx.textAlign = "left";
+    ctx.textAlign = "right"; ctx.fillStyle = C.accent2; ctx.fillText(playPos, CW - 375, 80); ctx.textAlign = "left";
     ctx.font = "500 40px Inter, Roboto, sans-serif"; ctx.fillStyle = C.muted;
     let info = current ? (current.video ? `${fmtT(current.media.currentTime)} / ${fmtT(vidEnd(current))}` + (current.media.paused ? " · pausiert" : "") : "Bild · 5 s") : "lädt…";
     ctx.fillText(info, 50, 165);
     if (grab) { ctx.textAlign = "right"; ctx.fillStyle = C.accent2; ctx.font = "600 34px Inter, Roboto, sans-serif";
-      ctx.fillText("verschieben · Stick ▲▼ = weiter/näher", CW - 50, 210); ctx.textAlign = "left"; }
+      ctx.fillText("bewegen · Stick ▲▼ = weiter/näher · Trigger = ablegen", CW - 50, 210); ctx.textAlign = "left"; }
     if (current && current.video) {                            // progress line (display only)
       const f = Math.min(1, current.media.currentTime / (vidEnd(current) || 1));
       rr(ctx, 600, 152, 950, 26, 13); ctx.fillStyle = "#26305a"; ctx.fill();
@@ -1359,7 +1369,7 @@
       case "play": togglePlay(); break;
       case "size-": setSize(xrSize() / 1.1); break;  case "size+": setSize(xrSize() * 1.1); break;  case "size1": setSize(1); break;
       case "sound": $("sound").checked = !$("sound").checked; applySound(); break;
-      case "swap": $("swap").checked = !$("swap").checked; if (media) buildXR(); break;
+      case "swap": $("swap").checked = !$("swap").checked; rebuildSoon(); break;
       case "bt-": setAoff(Number($("aoff").value) - 10); break;  case "bt+": setAoff(Number($("aoff").value) + 10); break;
       case "bt0": setAoff(Number($("aoff").value) > 0 ? 0 : 250); break;
       case "close": toggleMenu(false); break;
@@ -1375,7 +1385,8 @@
   }
   function setupXRUI() {
     const mc = document.createElement("canvas"); mc.width = CW; mc.height = CH; menuCtx = mc.getContext("2d");
-    menuTex = new THREE.CanvasTexture(mc); menuTex.encoding = THREE.sRGBEncoding; menuTex.anisotropy = xrRenderer.capabilities.getMaxAnisotropy();
+    menuTex = new THREE.CanvasTexture(mc); menuTex.encoding = THREE.sRGBEncoding;
+    menuTex.generateMipmaps = false; menuTex.minFilter = THREE.LinearFilter;   // cheaper to update
     menuMesh = new THREE.Mesh(new THREE.PlaneGeometry(MW, MH), new THREE.MeshBasicMaterial({ map: menuTex, transparent: true, depthTest: false }));
     menuMesh.renderOrder = 10; menuMesh.visible = false; xrScene.add(menuMesh);
     const tc = document.createElement("canvas"); tc.width = tc.height = 256; toggleCtx = tc.getContext("2d");
@@ -1393,7 +1404,9 @@
       c.addEventListener("selectstart", safe("Trigger", () => { const h = hover[i]; if (h && h.menu && h.title) startGrab(i, "select"); }));
       c.addEventListener("selectend", safe("Trigger los", () => { if (grab && grab.via === "select") endGrab(i); }));
       c.addEventListener("select", safe("Klick", () => {      // trigger or pinch
+        if (grab && grab.via === "button") { grab = null; menuMoved = true; menuDirty = true; return; }   // drop the menu here
         const h = hover[i];
+        if (h && h.btn && h.btn.a === "move") { if (h.point) grab = { i, via: "button", dist: h.distance, delta: menuMesh.position.clone().sub(h.point) }; menuDirty = true; return; }
         if (h && h.toggle) toggleMenu(true);
         else if (h && h.btn) { if (!h.btn.off) menuAction(h.btn.a); }
         else if (!menuOpen) togglePlay();
@@ -1430,7 +1443,7 @@
         else if (hit && hit.uv) {
           const px = hit.uv.x * CW, py = (1 - hit.uv.y) * CH;
           const btn = menuButtons().find(b => px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + b.h);
-          h = { btn: btn || null, menu: true, title: py < 215, point: hit.point.clone(), distance: hit.distance };
+          h = { btn: btn || null, menu: true, title: py < 215 && !(btn && btn.a === "move"), point: hit.point.clone(), distance: hit.distance };
         }
         if (c.userData.ray) c.userData.ray.scale.z = hit ? hit.distance : (menuOpen ? 3 : 0.35);
       }
@@ -1439,7 +1452,7 @@
       hover[i] = h;
     });
     if (toggleMesh.visible && toggleMesh.userData.hot !== toggleHot) { toggleMesh.userData.hot = toggleHot; drawToggle(toggleHot); }
-    if (menuOpen && (menuDirty || t - lastMenuDraw > 250)) { lastMenuDraw = t; drawMenu(); }
+    if (menuOpen && t - lastMenuDraw > (menuDirty ? 100 : 500)) { lastMenuDraw = t; drawMenu(); }   // at most 10 redraws per second
   }
   let frameErrors = 0;
   function xrFrame(t) {                                        // an error must never stop the picture (three.js would end the loop)
