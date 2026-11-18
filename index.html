@@ -202,6 +202,11 @@
           <b>Menü verschieben</b>: aufs Menü zeigen, <kbd>Griff</kbd> halten und bewegen (Stick ▲▼ = weiter/näher) – oder die Titelzeile mit Trigger/Pinch ziehen.</p>
       </div>
       <div id="status"></div>
+      <details id="errbox" style="display:none">
+        <summary>Fehlerprotokoll (<span id="errcount">0</span>)</summary>
+        <pre id="errlog" style="white-space:pre-wrap;font-size:13px;color:var(--muted);margin:8px 0"></pre>
+        <button type="button" class="chip" id="errclear">Protokoll leeren</button>
+      </details>
       <details id="phonebox">
         <summary>Handy-Viewer (Cardboard)</summary>
         <div id="phoneonly" style="display:flex;flex-direction:column;gap:12px;margin-top:10px">
@@ -237,6 +242,21 @@
   let media = null, mediaW = 0, mediaH = 0, fileName = "", isVideo = false, objectUrl = null;
 
   function setStatus(msg, cls) { statusEl.textContent = msg; statusEl.className = cls || ""; }
+  // technical error log (code location + message only), kept on this device so it can be read after leaving VR
+  let errLog = []; try { errLog = JSON.parse(localStorage.getItem("vrv_errors") || "[]"); } catch (e) {}
+  function showErrors() {
+    const box = document.getElementById("errbox"); if (!box) return;
+    box.style.display = errLog.length ? "" : "none"; $("errcount").textContent = errLog.length; $("errlog").textContent = errLog.join("\n\n");
+  }
+  function recordError(where, e) {
+    const st = e && e.stack ? String(e.stack).split("\n").slice(0, 4).map(x => x.trim()).join(" ← ") : "";
+    errLog.push(`${new Date().toLocaleString("de-DE")} · ${where}: ${e && e.message ? e.message : String(e)}${st ? "\n  " + st : ""}`);
+    errLog = errLog.slice(-12);
+    try { localStorage.setItem("vrv_errors", JSON.stringify(errLog)); } catch (x) {}
+    showErrors();
+  }
+  window.addEventListener("error", (e) => recordError("Fehler", e.error || e.message));
+  window.addEventListener("unhandledrejection", (e) => recordError("Fehler (async)", e.reason));
 
   function fileFov() { const m = fileName.toLowerCase().match(/_fov(\d+)/); return m ? Number(m[1]) : 90; }
   // Format from the file name alone (null = name says nothing). Covers the generator naming below and the usual naming of
@@ -493,6 +513,7 @@
   async function runThumbs() {
     if (thumbBusy) return; thumbBusy = true;
     while (thumbQueue.length) {
+      if (xrMode || running) break;                             // VR is running: pause, continue afterwards
       const tile = thumbQueue.shift(); if (!tile.isConnected) continue;
       const { name, src } = tile._thumb;
       try {
@@ -664,6 +685,8 @@
   $("refresh").addEventListener("click", loadList);
   loadList();
   checkOldLibrary();
+  showErrors();
+  $("errclear").addEventListener("click", () => { errLog = []; try { localStorage.removeItem("vrv_errors"); } catch (e) {} showErrors(); });
   $("format").addEventListener("change", describe);
   // Settings: remembered on this phone
   try { const v = localStorage.getItem("vrv_sound"); if (v !== null) $("sound").checked = v === "1"; } catch (e) {}
@@ -1041,7 +1064,7 @@
   });
 
   function exitVR() {
-    running = false; playToken++; setTimeout(freeLibUrls, 0);
+    running = false; playToken++; setTimeout(freeLibUrls, 0); setTimeout(runThumbs, 1500);
     ctrl.classList.remove("show"); seeking = false;
     if (stopWait) stopWait();
     release(current); current = null;
@@ -1364,16 +1387,17 @@
       const ray = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]),
                                  new THREE.LineBasicMaterial({ color: 0x8ea2ff, transparent: true, opacity: 0.7, depthTest: false }));
       ray.renderOrder = 11; ray.scale.z = 0.35; c.add(ray); c.userData.ray = ray; c.userData.i = i;
-      c.addEventListener("squeezestart", () => startGrab(i, "squeeze"));
-      c.addEventListener("squeezeend", () => endGrab(i));
-      c.addEventListener("selectstart", () => { const h = hover[i]; if (h && h.menu && h.title) startGrab(i, "select"); });
-      c.addEventListener("selectend", () => { if (grab && grab.via === "select") endGrab(i); });
-      c.addEventListener("select", () => {                    // trigger or pinch
+      const safe = (name, fn) => () => { try { fn(); } catch (e) { grab = null; recordError("Controller " + name, e); } };
+      c.addEventListener("squeezestart", safe("Griff", () => startGrab(i, "squeeze")));
+      c.addEventListener("squeezeend", safe("Griff los", () => endGrab(i)));
+      c.addEventListener("selectstart", safe("Trigger", () => { const h = hover[i]; if (h && h.menu && h.title) startGrab(i, "select"); }));
+      c.addEventListener("selectend", safe("Trigger los", () => { if (grab && grab.via === "select") endGrab(i); }));
+      c.addEventListener("select", safe("Klick", () => {      // trigger or pinch
         const h = hover[i];
         if (h && h.toggle) toggleMenu(true);
         else if (h && h.btn) { if (!h.btn.off) menuAction(h.btn.a); }
         else if (!menuOpen) togglePlay();
-      });
+      }));
       xrScene.add(c);
       return c;
     });
@@ -1417,14 +1441,17 @@
     if (toggleMesh.visible && toggleMesh.userData.hot !== toggleHot) { toggleMesh.userData.hot = toggleHot; drawToggle(toggleHot); }
     if (menuOpen && (menuDirty || t - lastMenuDraw > 250)) { lastMenuDraw = t; drawMenu(); }
   }
-  function xrFrame(t) {
+  let frameErrors = 0;
+  function xrFrame(t) {                                        // an error must never stop the picture (three.js would end the loop)
     const dt = xrLast ? Math.min(0.1, (t - xrLast) / 1000) : 0; xrLast = t;
-    if (xrSession) { xrInput(dt); updateXRUI(t); }
-    xrRenderer.render(xrScene, xrCam);
+    try { if (xrSession) { xrInput(dt); updateXRUI(t); } }
+    catch (e) { grab = null; if (frameErrors++ < 5) recordError("VR-Steuerung", e); }
+    try { xrRenderer.render(xrScene, xrCam); }
+    catch (e) { if (frameErrors++ < 5) recordError("VR-Anzeige", e); }
   }
   function freeLibUrls() { while (libUrls.length) URL.revokeObjectURL(libUrls.pop()); }
   function endXR() {
-    setTimeout(freeLibUrls, 0);
+    setTimeout(freeLibUrls, 0); setTimeout(runThumbs, 1500);
     xrMode = false; playToken++; jumpReq = 0;
     if (stopWait) stopWait();
     release(current); current = null;
