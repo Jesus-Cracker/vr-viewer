@@ -30,7 +30,7 @@
   .sub { color: var(--muted); margin: 0; font-size: 17px; }
   .layout { display:grid; grid-template-columns: minmax(0, 2fr) minmax(360px, 1fr); gap:22px; align-items:start; }
   @media (max-width: 1100px) { .layout { grid-template-columns: 1fr; } }
-  .card { background: color-mix(in srgb, var(--card) 92%, transparent); border:1px solid var(--line); border-radius: 22px; padding: 22px; display:flex; flex-direction:column; gap:16px; box-shadow: 0 10px 40px rgba(0,0,0,.25); }
+  .card { background: color-mix(in srgb, var(--card) 92%, transparent); border:1px solid var(--line); border-radius: 22px; padding: 22px; display:flex; flex-direction:column; gap:16px; box-shadow: 0 4px 14px rgba(0,0,0,.22); }
   .head { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
   .chips { display:flex; gap:10px; flex-wrap:wrap; }
   .chip, .btn { appearance:none; border:1px solid var(--line); background: var(--card2); color: var(--fg); border-radius: 999px; min-height: 52px; padding: 0 20px;
@@ -82,7 +82,7 @@
   summary { cursor:pointer; font-weight:600; min-height:44px; display:flex; align-items:center; color: var(--muted); }
   #status { font-size: 16px; color: var(--muted); min-height: 1.4em; }
   #status.ok { color: var(--ok); } #status.err { color: var(--err); }
-  .bar { position: fixed; left:0; right:0; bottom:0; padding: 16px 28px; background: rgba(10,14,26,.88); backdrop-filter: blur(12px); border-top:1px solid var(--line); z-index: 5; }
+  .bar { position: fixed; left:0; right:0; bottom:0; padding: 16px 28px; background: rgba(10,14,26,.97); border-top:1px solid var(--line); z-index: 5; }
   .bar .in { max-width:1440px; margin:0 auto; display:flex; align-items:center; gap:18px; }
   .bar .count { font-size: 20px; font-weight:700; }
   .bar .count small { display:block; font-size:15px; color: var(--muted); font-weight:500; }
@@ -1139,6 +1139,7 @@
         }
         xrMediaLayer = layer;
         xrSession.updateRenderState({ layers: [layer, xrRenderer.xr.getBaseLayer()] });   // video below, menu layer on top
+        setPerf(false);
         return;
       } catch (e) { removeMediaLayer(); }                       // fall back to normal WebXR drawing below
     }
@@ -1190,6 +1191,14 @@
     }
     xrScene.add(xrContent);
     vDown = vDownNew;
+    setPerf(isVideo);                                          // a video drawn by the viewer itself = heavy
+  }
+  function setPerf(heavy) {
+    try { xrRenderer.xr.setFoveation(heavy ? 0.5 : 0); } catch (e) {}
+    try {
+      const want = heavy ? 72 : 90, rates = xrSession && xrSession.supportedFrameRates ? [...xrSession.supportedFrameRates] : [];
+      if (xrSession.updateTargetFrameRate && rates.includes(want) && xrSession.frameRate !== want) xrSession.updateTargetFrameRate(want).catch(() => {});
+    } catch (e) {}
   }
   function applyXRSize() {
     if (!xrMode || !media) return;
@@ -1245,6 +1254,7 @@
   // ---------- menu inside VR: point with the controller (or hand) and pull the trigger / pinch ----------
   const MW = 1.0, MH = 0.6, CW = 1600, CH = 960;              // panel size in metres / canvas pixels
   let menuMesh = null, menuCtx = null, menuTex = null, menuOpen = false, toggleMesh = null, toggleTex = null, toggleCtx = null;
+  let lastStamp = "", btnCache = null;                          // buttons of the last drawn menu (used for the ray test)
   let controllers = [], hover = [null, null], menuDirty = true, lastMenuDraw = 0;
   const raycaster = new THREE.Raycaster(), tmpM = new THREE.Matrix4();
   const C = { bg: "rgba(16,22,42,0.94)", card: "#1b2442", line: "#2a3558", fg: "#eef2ff", muted: "#9ba7c9", accent: "#8ea2ff", accent2: "#4fd8c6", hover: "#2c3a72" };
@@ -1327,7 +1337,8 @@
       rr(ctx, 600, 152, Math.max(26, 950 * f), 26, 13); ctx.fillStyle = C.accent2; ctx.fill();
     }
     const hv = new Set(hover.filter(h => h && h.btn).map(h => h.btn.a));
-    for (const b of menuButtons()) {
+    btnCache = menuButtons();
+    for (const b of btnCache) {
       rr(ctx, b.x, b.y, b.w, b.h, 30);
       ctx.fillStyle = b.off ? "#141a30" : hv.has(b.a) ? C.hover : b.hl ? "#20345a" : b.on ? "#183f45" : C.card; ctx.fill();
       ctx.lineWidth = hv.has(b.a) ? 6 : 3; ctx.strokeStyle = hv.has(b.a) ? C.accent : b.danger ? "#7a3a44" : C.line; ctx.stroke();
@@ -1468,7 +1479,7 @@
         if (hit && hit.object === toggleMesh) { h = { toggle: true, point: hit.point.clone(), distance: hit.distance }; toggleHot = true; }
         else if (hit && hit.uv) {
           const px = hit.uv.x * CW, py = (1 - hit.uv.y) * CH;
-          const btn = menuButtons().find(b => px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + b.h);
+          const btn = (btnCache || menuButtons()).find(b => px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + b.h);
           h = { btn: btn || null, menu: true, title: py < 215 && !(btn && btn.a === "move"), point: hit.point.clone(), distance: hit.distance };
         }
         if (c.userData.ray) c.userData.ray.scale.z = hit ? hit.distance : (menuOpen ? 3 : 0.35);
@@ -1479,7 +1490,8 @@
     });
     if (grab) toggleHot = true;                                 // moving: keep ☰ highlighted
     if (toggleMesh.visible && toggleMesh.userData.hot !== toggleHot) { toggleMesh.userData.hot = toggleHot; drawToggle(toggleHot); }
-    if (menuOpen && t - lastMenuDraw > (menuDirty ? 100 : 500)) { lastMenuDraw = t; drawMenu(); }   // at most 10 redraws per second
+    const stamp = current && current.video ? Math.floor(current.media.currentTime) + (current.media.paused ? "p" : "") : "";
+    if (menuOpen && (menuDirty || stamp !== lastStamp) && t - lastMenuDraw > 100) { lastMenuDraw = t; lastStamp = stamp; drawMenu(); }   // only when something changed, max 10/s
   }
   let frameErrors = 0, vDown = null;
   function xrFrame(t) {                                        // an error must never stop the picture (three.js would end the loop)
@@ -1514,7 +1526,7 @@
     catch (e) { setStatus("VR could not be started: " + e.message, "err"); return; }
     try {
       if (!xrRenderer) {
-        xrRenderer = new THREE.WebGLRenderer({ antialias: true });
+        xrRenderer = new THREE.WebGLRenderer({ antialias: false });   // 4x MSAA on a 1.5x buffer cost a lot and only smooths geometry edges
         xrRenderer.outputEncoding = THREE.sRGBEncoding;
         xrRenderer.setClearColor(0x000000, 0);                 // transparent where nothing is drawn (video layer shows through)
         xrRenderer.xr.enabled = true;
