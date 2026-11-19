@@ -845,7 +845,7 @@
 
   // ---------- playlist: ticked files in list order, looping; videos for their length, pictures 5 s ----------
   const PICTURE_SECONDS = 5;
-  let playToken = 0, stopWait = null, current = null, jumpReq = 0;
+  let playToken = 0, stopWait = null, current = null, jumpReq = 0, reloadReq = false;
   const hintEl = $("hint");
   function hint(msg) { hintEl.textContent = msg; }
   function waitDone(m, loopAlone, token) {
@@ -1000,7 +1000,8 @@
       if (n > 1 && !items[ni].video) next = load(ni);         // only pictures are prepared in advance
       await waitDone(m, n === 1, token);
       let steps = jumpReq; jumpReq = 0;
-      if (steps !== 0) {                                       // several quick presses: wait until they stop, then jump once
+      if (reloadReq) { reloadReq = false; steps = 0; }        // same item again with a fresh player
+      else if (steps !== 0) {                                       // several quick presses: wait until they stop, then jump once
         for (;;) { await new Promise(r => setTimeout(r, 300)); if (!jumpReq || token !== playToken) break; steps += jumpReq; jumpReq = 0; }
       } else steps = 1;
       const target = (((i + steps) % n) + n) % n;
@@ -1118,6 +1119,7 @@
     xrMediaLayer = null;
   }
   function buildXR() {
+    vDown = null;
     if (xrContent) { disposeScene(xrContent); xrScene.remove(xrContent); xrContent = null; }
     removeMediaLayer();
     const fmt = currentFormat(), swap = $("swap").checked, ea = eyeAspectOf(fmt);
@@ -1141,8 +1143,13 @@
       } catch (e) { removeMediaLayer(); }                       // fall back to normal WebXR drawing below
     }
     const src = fitTexture(media, mediaW, mediaH);
+    let vDownNew = null;
     const makeTex = () => {
-      const t = isVideo ? new THREE.VideoTexture(media) : new THREE.Texture(src);
+      let t;
+      if (isVideo && media.videoWidth > 4096) {                // 8K drawn by the viewer: a 4K copy, refreshed only on new video frames
+        const c = document.createElement("canvas"); c.width = 4096; c.height = Math.round(4096 * media.videoHeight / media.videoWidth);
+        t = new THREE.CanvasTexture(c); vDownNew = { video: media, ctx: c.getContext("2d", { alpha: false }), w: c.width, h: c.height, tex: t, lastT: -1 };
+      } else t = isVideo ? new THREE.VideoTexture(media) : new THREE.Texture(src);
       t.encoding = THREE.sRGBEncoding; t.magFilter = THREE.LinearFilter;
       if (isVideo) { t.minFilter = THREE.LinearFilter; t.generateMipmaps = false; }
       else { t.minFilter = THREE.LinearMipmapLinearFilter; t.generateMipmaps = true; }
@@ -1175,13 +1182,14 @@
     const tL = makeTex();
     if (layout === "mono") xrContent.add(makeMesh(tL));        // both eyes see layer 0
     else {
-      const tR = isVideo ? makeTex() : tL.clone(); tR.needsUpdate = true;
+      const tR = tL.clone(); tR.needsUpdate = true;              // same picture for both eyes: uploaded to the GPU only once
       setHalf(tL, swap ? "R" : "L"); setHalf(tR, swap ? "L" : "R");
       const mL = makeMesh(tL), mR = makeMesh(tR);
       mL.layers.set(1); mR.layers.set(2);                      // three.js: left eye camera sees layer 1, right eye layer 2
       xrContent.add(mL, mR);
     }
     xrScene.add(xrContent);
+    vDown = vDownNew;
   }
   function applyXRSize() {
     if (!xrMode || !media) return;
@@ -1240,7 +1248,15 @@
   let controllers = [], hover = [null, null], menuDirty = true, lastMenuDraw = 0;
   const raycaster = new THREE.Raycaster(), tmpM = new THREE.Matrix4();
   const C = { bg: "rgba(16,22,42,0.94)", card: "#1b2442", line: "#2a3558", fg: "#eef2ff", muted: "#9ba7c9", accent: "#8ea2ff", accent2: "#4fd8c6", hover: "#2c3a72" };
+  function formatButtons() {                                    // the format list page of the menu
+    const list = [["auto", "Automatisch"], ...FORMATS.map(f => [f, LABEL[f]])], W = 360, H = 128, G = 21;
+    const chosen = fileFormats[fileName] || "auto";
+    const b = list.map(([f, t], k) => ({ x: 25 + (k % 4) * (W + G), y: 190 + Math.floor(k / 4) * (H + 20), w: W, h: H, t, a: "setfmt:" + f, on: f === chosen }));
+    b.push({ x: 25 + (list.length % 4) * (W + G), y: 190 + Math.floor(list.length / 4) * (H + 20), w: W, h: H, t: "Zurück", a: "fmtback" });
+    return b;
+  }
   function menuButtons() {
+    if (menuPage === "fmt") return formatButtons();
     const v = current && current.video, playing = v && !current.media.paused;
     const sz = xrSize().toFixed(2), d = $("aoff").value, snd = $("sound").checked, sw = $("swap").checked;
     const W = 290, H = 150, G = 17, X = (i) => 25 + i * (W + G);
@@ -1252,8 +1268,8 @@
                    { t: "+10 s", a: "fwd", off: !v }, { t: "⏭", s: "Weiter", a: "next" }]),
       ...row(400, [{ t: "Größe −", a: "size-" }, { t: sz + "×", s: "echt = 1.00", a: "size1" }, { t: "Größe +", a: "size+" },
                    { t: snd ? "Ton an" : "Ton aus", a: "sound", on: snd }, { t: "Augen", s: sw ? "getauscht" : "normal", a: "swap", on: sw }]),
-      ...row(740, [{ t: "◀", s: "Format", a: "fmt-" }, { t: LABEL[curFmt()] || "", s: fileFormats[fileName] || $("format").value !== "auto" ? "gewählt · tippen = auto" : "automatisch erkannt", a: "fmt0", wide: true },
-                   null, { t: "▶", s: "Format", a: "fmt+" },
+      ...row(740, [{ t: LABEL[curFmt()] || "Format", s: fileFormats[fileName] ? "gewählt · tippen = ändern" : "erkannt · tippen = ändern", a: "fmtpage", wide: true },
+                   null, { t: "Auto", s: "Format", a: "fmt0", off: !fileFormats[fileName] }, null,
                    { t: delArmed ? "Wirklich?" : "Löschen", s: delArmed ? "nochmal tippen" : (canDel() ? "von der Brille" : "nur Ordner"), a: "del", off: !canDel(), danger: true }]),
       ...row(570, [{ t: "BT −10", a: "bt-" }, { t: d + " ms", s: "Bluetooth", a: "bt0" }, { t: "BT +10", a: "bt+" },
                    { t: "Schließen", a: "close" }, { t: "VR beenden", a: "exit", danger: true }]),
@@ -1271,8 +1287,20 @@
     it.deleted = true; jump(1);                                // next item; the deleted one is skipped from now on
     if (dirHandle) listDir();
   }
+  function reloadCurrent() {                                   // videos: fresh player + new video layer instead of re-binding
+    if (current && current.video) { reloadReq = true; if (stopWait) stopWait(); }
+    else rebuildSoon();
+  }
   let rebuildT = null;
   function rebuildSoon() { clearTimeout(rebuildT); rebuildT = setTimeout(() => { try { if (media && xrMode) buildXR(); } catch (e) { recordError("Neuaufbau", e); } }, 350); }
+  let menuPage = "main";
+  function applyFileFormat(f) {                                // chosen in the format list: this file only, remembered
+    if (!media) return;
+    if ($("format").value !== "auto") { $("format").value = "auto"; $("format").dispatchEvent(new Event("change")); }
+    if (f === "auto") delete fileFormats[fileName]; else fileFormats[fileName] = f;
+    try { localStorage.setItem("vrv_fmt", JSON.stringify(fileFormats)); } catch (e) {}
+    reloadCurrent();
+  }
   function setFileFormat(dir) {                                // ◀ ▶ in the menu: this file only, remembered
     if (!media) return;
     if ($("format").value !== "auto") { $("format").value = "auto"; $("format").dispatchEvent(new Event("change")); }
@@ -1292,11 +1320,11 @@
     ctx.fillText(nm === name ? nm : nm + "…", 50, 80);
     ctx.textAlign = "right"; ctx.fillStyle = C.accent2; ctx.fillText(playPos, CW - 375, 80); ctx.textAlign = "left";
     ctx.font = "500 40px Inter, Roboto, sans-serif"; ctx.fillStyle = C.muted;
-    let info = current ? (current.video ? `${fmtT(current.media.currentTime)} / ${fmtT(vidEnd(current))}` + (current.media.paused ? " · pausiert" : "") : "Bild · 5 s") : "lädt…";
+    let info = menuPage === "fmt" ? "Format für diese Datei wählen" : current ? (current.video ? `${fmtT(current.media.currentTime)} / ${fmtT(vidEnd(current))}` + (current.media.paused ? " · pausiert" : "") : "Bild · 5 s") : "lädt…";
     ctx.fillText(info, 50, 165);
     if (grab) { ctx.textAlign = "right"; ctx.fillStyle = C.accent2; ctx.font = "600 34px Inter, Roboto, sans-serif";
       ctx.fillText("bewegen · Stick ▲▼ = weiter/näher · Trigger = ablegen", CW - 50, 210); ctx.textAlign = "left"; }
-    if (current && current.video) {                            // progress line (display only)
+    if (current && current.video && menuPage === "main") {     // progress line (display only)
       const f = Math.min(1, current.media.currentTime / (vidEnd(current) || 1));
       rr(ctx, 600, 152, 950, 26, 13); ctx.fillStyle = "#26305a"; ctx.fill();
       rr(ctx, 600, 152, Math.max(26, 950 * f), 26, 13); ctx.fillStyle = C.accent2; ctx.fill();
@@ -1349,6 +1377,7 @@
   function toggleMenu(open) {
     menuOpen = open === undefined ? !menuOpen : open;
     if (!menuOpen && grab) grab = null;
+    if (!menuOpen) menuPage = "main";
     if (menuOpen) { if (!menuMoved || !inSight(menuMesh)) { placeInFront(menuMesh, 1.1, -0.18); menuMoved = false; } menuDirty = true; }
     menuMesh.visible = menuOpen; toggleMesh.visible = !menuOpen;
     controllers.forEach(c => { if (c.userData.ray) c.userData.ray.scale.z = menuOpen ? 3 : 0.35; });
@@ -1361,6 +1390,9 @@
     else { current.media.volume = 1; current.media.muted = false; }
   }
   function menuAction(a) {
+    if (a.startsWith("setfmt:")) { menuPage = "main"; applyFileFormat(a.slice(7)); menuDirty = true; return; }
+    if (a === "fmtpage") { menuPage = "fmt"; menuDirty = true; return; }
+    if (a === "fmtback") { menuPage = "main"; menuDirty = true; return; }
     const setAoff = (v) => { const el = $("aoff"); el.value = Math.max(0, Math.min(500, v)); showVal(); try { localStorage.setItem("vrv_aoff", el.value); } catch (e) {} applyAudioOffset(); };
     const setSize = (v) => { xrSizeEl.value = Math.min(6, Math.max(0.3, v)).toFixed(2); showXRSize(); saveXRSize(); applyXRSize(); };
     switch (a) {
@@ -1369,7 +1401,7 @@
       case "play": togglePlay(); break;
       case "size-": setSize(xrSize() / 1.1); break;  case "size+": setSize(xrSize() * 1.1); break;  case "size1": setSize(1); break;
       case "sound": $("sound").checked = !$("sound").checked; applySound(); break;
-      case "swap": $("swap").checked = !$("swap").checked; rebuildSoon(); break;
+      case "swap": $("swap").checked = !$("swap").checked; reloadCurrent(); break;
       case "bt-": setAoff(Number($("aoff").value) - 10); break;  case "bt+": setAoff(Number($("aoff").value) + 10); break;
       case "bt0": setAoff(Number($("aoff").value) > 0 ? 0 : 250); break;
       case "close": toggleMenu(false); break;
@@ -1378,7 +1410,7 @@
         if (delArmed) { delArmed = false; clearTimeout(delTimer); deleteCurrent(); }
         else { delArmed = true; clearTimeout(delTimer); delTimer = setTimeout(() => { delArmed = false; menuDirty = true; }, 4000); }
         break;
-      case "fmt-": setFileFormat(-1); break;   case "fmt+": setFileFormat(1); break;   case "fmt0": setFileFormat(0); break;
+      case "fmt0": applyFileFormat("auto"); break;
       case "exit": try { xrSession.end(); } catch (e) {} break;
     }
     menuDirty = true;
@@ -1454,12 +1486,18 @@
     if (toggleMesh.visible && toggleMesh.userData.hot !== toggleHot) { toggleMesh.userData.hot = toggleHot; drawToggle(toggleHot); }
     if (menuOpen && t - lastMenuDraw > (menuDirty ? 100 : 500)) { lastMenuDraw = t; drawMenu(); }   // at most 10 redraws per second
   }
-  let frameErrors = 0;
+  let frameErrors = 0, vDown = null;
   function xrFrame(t) {                                        // an error must never stop the picture (three.js would end the loop)
     const dt = xrLast ? Math.min(0.1, (t - xrLast) / 1000) : 0; xrLast = t;
     try { if (xrSession) { xrInput(dt); updateXRUI(t); } }
     catch (e) { grab = null; if (frameErrors++ < 5) recordError("VR-Steuerung", e); }
-    try { xrRenderer.render(xrScene, xrCam); }
+    try {
+      if (vDown) {                                             // 8K copy: draw only when the video has a new frame
+        const v = vDown.video;
+        if (v.readyState >= 2 && v.currentTime !== vDown.lastT) { vDown.lastT = v.currentTime; vDown.ctx.drawImage(v, 0, 0, vDown.w, vDown.h); vDown.tex.needsUpdate = true; }
+      }
+      xrRenderer.render(xrScene, xrCam);
+    }
     catch (e) { if (frameErrors++ < 5) recordError("VR-Anzeige", e); }
   }
   function freeLibUrls() { while (libUrls.length) URL.revokeObjectURL(libUrls.pop()); }
@@ -1468,7 +1506,7 @@
     xrMode = false; playToken++; jumpReq = 0;
     if (stopWait) stopWait();
     release(current); current = null;
-    xrMediaLayer = null; teardownXRUI(); disposeScene(xrScene); xrScene = null; xrContent = null;
+    xrMediaLayer = null; vDown = null; teardownXRUI(); disposeScene(xrScene); xrScene = null; xrContent = null;
     if (xrRenderer) xrRenderer.setAnimationLoop(null);
     xrSession = null; xrMediaBinding = null; padState.clear();
     selectionChanged();
